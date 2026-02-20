@@ -407,8 +407,8 @@ Planned code-health and scalability improvements, mapped to roadmap phases.
 | A1 | **Extract `extension.ts` modules** — Move command handlers to `src/commands.ts`, status bar to `src/statusBar.ts`. Keep extension.ts as thin wiring layer. | ✅ Done | extension.ts reduced from ~330 lines to ~113 lines. Commands in `commands.ts` (272 lines, 92% covered). Status bar in `statusBar.ts` (71 lines, 100% covered). |
 | A2 | **Add `onDidChangeConfiguration` handler** — React to setting changes at runtime without requiring reload. | ✅ Done | Handler reacts to `eloquent.enabled` toggle and backend settings (voice, kokoroDtype, serverPort, etc.) that require re-initialization. |
 | A3 | **Structured logging via `LogOutputChannel`** — Use `createOutputChannel(name, { log: true })` with `.info()`, `.warn()`, `.error()`. | ✅ Done | All `appendLine()` calls replaced with appropriate log levels. `ExtensionServices.outputChannel` typed as `LogOutputChannel`. |
-| A4 | **`installer.ts` test coverage** — Cover `ensurePythonEnvironment()` (34% → target >80%). | 🔲 Planned | See [detailed plan below](#a4-installerts-test-coverage-plan). |
-| A5 | **`f5python.ts` test coverage** — Cover subprocess lifecycle and error paths (57% → target >80%). | 🔲 Planned | See [detailed plan below](#a5-f5pythonts-test-coverage-plan). |
+| A4 | **`installer.ts` test coverage** — Cover `ensurePythonEnvironment()` (34% → target >80%). | ✅ Done | 11 new tests covering full flow: download, extract, venv, pip install, early-return, error propagation, platform gate. 18 total installer tests. |
+| A5 | **`f5python.ts` test coverage** — Cover subprocess lifecycle and error paths (57% → target >80%). | ✅ Done | 6 new tests covering startServer lifecycle: READY signal, 60s timeout, process error, exit handler, CLI args with/without optional params. 11 total f5python tests. |
 
 ---
 

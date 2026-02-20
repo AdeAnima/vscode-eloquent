@@ -23,7 +23,7 @@ vi.mock("fs", async () => {
   };
 });
 
-import { runCommand, ensureKokoroInstalled } from "../src/installer";
+import { runCommand, ensureKokoroInstalled, ensurePythonEnvironment } from "../src/installer";
 import * as vscode from "vscode";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -133,6 +133,178 @@ describe("installer", () => {
       await ensureKokoroInstalled("/ext");
 
       expect(callCount).toBe(2);
+    });
+  });
+
+  describe("ensurePythonEnvironment", () => {
+    const storageDir = "/fake/storage";
+
+    /** Make all execFile calls succeed by default */
+    function mockExecSuccess() {
+      mockExecFile.mockImplementation(
+        (_cmd: string, _args: string[], _opts: any, cb: Function) => {
+          cb(null, "", "");
+        }
+      );
+    }
+
+    it("returns early if venv python already exists", async () => {
+      mockExistsSync.mockImplementation((p: string) =>
+        p.endsWith("bin/python3") && p.includes("f5-venv")
+      );
+
+      const result = await ensurePythonEnvironment(storageDir);
+
+      expect(result).toContain("f5-venv");
+      expect(result).toContain("bin/python3");
+      expect(mockExecFile).not.toHaveBeenCalled();
+    });
+
+    it("throws on macOS Intel (non-arm64)", async () => {
+      mockExistsSync.mockReturnValue(false);
+      const origPlatform = process.platform;
+      const origArch = process.arch;
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      Object.defineProperty(process, "arch", { value: "x64" });
+
+      try {
+        await expect(ensurePythonEnvironment(storageDir)).rejects.toThrow(
+          "Apple Silicon"
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform });
+        Object.defineProperty(process, "arch", { value: origArch });
+      }
+    });
+
+    it("downloads Python when standalone missing", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      // First execFile call should be curl download
+      const firstCall = mockExecFile.mock.calls[0];
+      expect(firstCall[0]).toBe("curl");
+      expect(firstCall[1]).toContain("-L");
+      expect(firstCall[1]).toContain("--fail");
+      // URL should point to python-build-standalone
+      expect(firstCall[1].find((a: string) => a.includes("python-build-standalone"))).toBeTruthy();
+    });
+
+    it("extracts tarball and cleans up archive", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      // Second execFile call should be tar extraction
+      const tarCall = mockExecFile.mock.calls[1];
+      expect(tarCall[0]).toBe("tar");
+      expect(tarCall[1]).toContain("xzf");
+      expect(tarCall[1]).toContain("--strip-components=1");
+
+      // Archive should be cleaned up
+      expect(mockUnlinkSync).toHaveBeenCalledWith(
+        expect.stringContaining("python-standalone.tar.gz")
+      );
+    });
+
+    it("skips download if standalone binary already exists", async () => {
+      mockExistsSync.mockImplementation((p: string) => {
+        // venv doesn't exist, but standalone does
+        if (p.includes("f5-venv")) return false;
+        if (p.includes("python-standalone")) return true;
+        return false;
+      });
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      // Should NOT call curl (no download)
+      const cmds = mockExecFile.mock.calls.map((c: any[]) => c[0]);
+      expect(cmds).not.toContain("curl");
+      expect(cmds).not.toContain("tar");
+    });
+
+    it("creates venv from standalone Python", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      // Third call: python3 -m venv
+      const venvCall = mockExecFile.mock.calls[2];
+      expect(venvCall[0]).toContain("python3");
+      expect(venvCall[1]).toEqual(["-m", "venv", expect.stringContaining("f5-venv")]);
+    });
+
+    it("installs f5-tts-mlx via pip with 30min timeout", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      // Fourth call: pip install
+      const pipCall = mockExecFile.mock.calls[3];
+      expect(pipCall[0]).toContain("pip");
+      expect(pipCall[1]).toEqual(["install", "f5-tts-mlx"]);
+      expect(pipCall[2]).toMatchObject({ timeout: 1_800_000 });
+    });
+
+    it("returns venv python path on success", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      const result = await ensurePythonEnvironment(storageDir);
+
+      expect(result).toBe(`${storageDir}/f5-venv/bin/python3`);
+    });
+
+    it("propagates curl download errors", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecFile.mockImplementation(
+        (cmd: string, _args: string[], _opts: any, cb: Function) => {
+          if (cmd === "curl") {
+            cb(new Error("download failed"), "", "curl: network error");
+          } else {
+            cb(null, "", "");
+          }
+        }
+      );
+
+      await expect(ensurePythonEnvironment(storageDir)).rejects.toThrow(
+        "curl"
+      );
+    });
+
+    it("propagates pip install errors", async () => {
+      mockExistsSync.mockReturnValue(false);
+      let callIdx = 0;
+      mockExecFile.mockImplementation(
+        (_cmd: string, _args: string[], _opts: any, cb: Function) => {
+          callIdx++;
+          if (callIdx === 4) {
+            // pip install (4th call) fails
+            cb(new Error("pip failed"), "", "Could not install f5-tts-mlx");
+          } else {
+            cb(null, "", "");
+          }
+        }
+      );
+
+      await expect(ensurePythonEnvironment(storageDir)).rejects.toThrow(
+        "pip"
+      );
+    });
+
+    it("creates storageDir recursively", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+
+      await ensurePythonEnvironment(storageDir);
+
+      expect(mockMkdirSync).toHaveBeenCalledWith(storageDir, { recursive: true });
     });
   });
 });

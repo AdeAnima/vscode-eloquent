@@ -10,6 +10,12 @@ export enum StatusBarAlignment {
   Right = 2,
 }
 
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 export const window = {
   createOutputChannel: (_name: string) => ({
     appendLine: () => {},

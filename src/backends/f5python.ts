@@ -1,0 +1,198 @@
+import type { AudioChunk, TtsBackend } from "../types";
+import { chunkText } from "../chunker";
+import { ensurePythonEnvironment } from "../installer";
+import { ChildProcess, spawn } from "child_process";
+import * as http from "http";
+import * as path from "path";
+import * as os from "os";
+import * as fs from "fs";
+
+/**
+ * F5-TTS-MLX backend via python-build-standalone.
+ *
+ * Auto-downloads a self-contained Python runtime on first use
+ * (no user-installed Python required), installs f5-tts-mlx into it,
+ * then runs the existing tts_server.py as an HTTP subprocess.
+ */
+export class F5PythonBackend implements TtsBackend {
+  readonly name = "F5-TTS (Python)";
+
+  private process: ChildProcess | null = null;
+  private ready = false;
+
+  constructor(
+    private readonly storageDir: string,
+    private readonly serverScript: string,
+    private readonly port: number = 18230,
+    private readonly refAudioPath: string = "",
+    private readonly refText: string = "",
+    private readonly quantization: string = "none"
+  ) {}
+
+  async initialize(): Promise<void> {
+    const pythonPath = await this.ensurePython();
+    await this.startServer(pythonPath);
+  }
+
+  async *synthesize(
+    text: string,
+    signal: AbortSignal
+  ): AsyncIterable<AudioChunk> {
+    if (!this.ready) {
+      throw new Error("F5-TTS server not ready");
+    }
+
+    const chunks = chunkText(text);
+    for (const chunk of chunks) {
+      if (signal.aborted) return;
+
+      const tmpFile = path.join(os.tmpdir(), `eloquent-${Date.now()}.wav`);
+      try {
+        await this.requestSynthesis(chunk, tmpFile);
+        if (signal.aborted) return;
+
+        const wavBuffer = fs.readFileSync(tmpFile);
+        const audioData = this.parseWav(wavBuffer);
+        yield audioData;
+      } finally {
+        fs.unlink(tmpFile, () => {});
+      }
+    }
+  }
+
+  dispose(): void {
+    if (this.process) {
+      this.process.kill("SIGTERM");
+      this.process = null;
+    }
+    this.ready = false;
+  }
+
+  // --- Python runtime management ---
+
+  private async ensurePython(): Promise<string> {
+    return ensurePythonEnvironment(this.storageDir);
+  }
+
+  // --- Server lifecycle ---
+
+  private startServer(pythonPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const args = [this.serverScript, "--port", String(this.port)];
+      if (this.refAudioPath) {
+        args.push("--ref-audio", this.refAudioPath);
+      }
+      if (this.refText) {
+        args.push("--ref-text", this.refText);
+      }
+      if (this.quantization !== "none") {
+        args.push("--quantize", this.quantization);
+      }
+
+      this.process = spawn(pythonPath, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env },
+      });
+
+      const timeout = setTimeout(() => {
+        reject(new Error("F5-TTS server failed to start within 60s"));
+      }, 60_000);
+
+      this.process.stdout?.on("data", (data: Buffer) => {
+        if (data.toString().includes("READY")) {
+          this.ready = true;
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+
+      this.process.on("exit", () => {
+        this.ready = false;
+        this.process = null;
+        clearTimeout(timeout);
+      });
+
+      this.process.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+  }
+
+  // --- HTTP synthesis ---
+
+  private requestSynthesis(
+    text: string,
+    outputPath: string
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({ text, output_path: outputPath });
+      const req = http.request(
+        {
+          hostname: "127.0.0.1",
+          port: this.port,
+          path: "/synthesize",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
+          },
+          timeout: 120_000,
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (chunk: string) => (data += chunk));
+          res.on("end", () => {
+            if (res.statusCode === 200) resolve();
+            else reject(new Error(`Server returned ${res.statusCode}: ${data}`));
+          });
+        }
+      );
+      req.on("error", reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Synthesis request timed out"));
+      });
+      req.write(body);
+      req.end();
+    });
+  }
+
+  // --- WAV parsing ---
+
+  private parseWav(buffer: Buffer): AudioChunk {
+    // Standard WAV: 44-byte header, then PCM data
+    // Read sample rate from bytes 24-27
+    const sampleRate = buffer.readUInt32LE(24);
+    const bitsPerSample = buffer.readUInt16LE(34);
+
+    // Find data chunk
+    let dataOffset = 12;
+    while (dataOffset < buffer.length - 8) {
+      const chunkId = buffer.toString("ascii", dataOffset, dataOffset + 4);
+      const chunkSize = buffer.readUInt32LE(dataOffset + 4);
+      if (chunkId === "data") {
+        dataOffset += 8;
+        const pcmData = buffer.subarray(dataOffset, dataOffset + chunkSize);
+        const samples = this.pcmToFloat32(pcmData, bitsPerSample);
+        return { samples, sampleRate };
+      }
+      dataOffset += 8 + chunkSize;
+    }
+    throw new Error("Invalid WAV: no data chunk");
+  }
+
+  private pcmToFloat32(pcm: Buffer, bitsPerSample: number): Float32Array {
+    if (bitsPerSample === 16) {
+      const samples = new Float32Array(pcm.length / 2);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = pcm.readInt16LE(i * 2) / 32768;
+      }
+      return samples;
+    }
+    if (bitsPerSample === 32) {
+      return new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
+    }
+    throw new Error(`Unsupported WAV bits per sample: ${bitsPerSample}`);
+  }
+}

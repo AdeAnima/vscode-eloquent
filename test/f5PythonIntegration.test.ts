@@ -73,11 +73,14 @@ describe("F5PythonBackend HTTP integration", () => {
 
   /** Create a backend pointing at our test server, with ready=true. */
   function readyBackend(): F5PythonBackend {
-    const backend = new F5PythonBackend(
-      os.tmpdir(),
-      "/fake/server.py",
-      port
-    );
+    const backend = new F5PythonBackend({
+      storageDir: os.tmpdir(),
+      serverScript: "/fake/server.py",
+      port,
+      refAudioPath: "",
+      refText: "",
+      quantization: "none",
+    });
     // Skip initialize() (it spawns a real Python process).
     // Directly set ready=true and port to test the HTTP layer.
     (backend as any).ready = true;
@@ -112,7 +115,7 @@ describe("F5PythonBackend HTTP integration", () => {
     }
 
     // Give the async unlink a moment
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 200));
 
     const after = new Set(fs.readdirSync(tmpDir).filter((f) => f.startsWith("eloquent-")));
     // The temp file should be cleaned up (no new files remaining)

@@ -67,7 +67,7 @@ export class AudioPlayer {
 
     const tmpFile = path.join(os.tmpdir(), `eloquent-${Date.now()}.wav`);
     try {
-      fs.writeFileSync(tmpFile, this.encodeWav(chunk));
+      fs.writeFileSync(tmpFile, encodeWav(chunk));
       await this.playFile(tmpFile);
     } finally {
       fs.unlink(tmpFile, () => {});
@@ -117,40 +117,42 @@ export class AudioPlayer {
     });
   }
 
-  private encodeWav(chunk: AudioChunk): Buffer {
-    const { samples, sampleRate } = chunk;
-    const bitsPerSample = 16;
-    const numChannels = 1;
-    const bytesPerSample = bitsPerSample / 8;
-    const dataSize = samples.length * bytesPerSample;
-    const headerSize = 44;
-    const buffer = Buffer.alloc(headerSize + dataSize);
+}
 
-    // RIFF header
-    buffer.write("RIFF", 0);
-    buffer.writeUInt32LE(36 + dataSize, 4);
-    buffer.write("WAVE", 8);
+/** Encode an AudioChunk as a WAV buffer (PCM 16-bit mono). */
+export function encodeWav(chunk: AudioChunk): Buffer {
+  const { samples, sampleRate } = chunk;
+  const bitsPerSample = 16;
+  const numChannels = 1;
+  const bytesPerSample = bitsPerSample / 8;
+  const dataSize = samples.length * bytesPerSample;
+  const headerSize = 44;
+  const buffer = Buffer.alloc(headerSize + dataSize);
 
-    // fmt chunk
-    buffer.write("fmt ", 12);
-    buffer.writeUInt32LE(16, 16); // chunk size
-    buffer.writeUInt16LE(1, 20); // PCM format
-    buffer.writeUInt16LE(numChannels, 22);
-    buffer.writeUInt32LE(sampleRate, 24);
-    buffer.writeUInt32LE(sampleRate * numChannels * bytesPerSample, 28);
-    buffer.writeUInt16LE(numChannels * bytesPerSample, 32);
-    buffer.writeUInt16LE(bitsPerSample, 34);
+  // RIFF header
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8);
 
-    // data chunk
-    buffer.write("data", 36);
-    buffer.writeUInt32LE(dataSize, 40);
+  // fmt chunk
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16); // chunk size
+  buffer.writeUInt16LE(1, 20); // PCM format
+  buffer.writeUInt16LE(numChannels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * numChannels * bytesPerSample, 28);
+  buffer.writeUInt16LE(numChannels * bytesPerSample, 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
 
-    // Convert float32 → int16
-    for (let i = 0; i < samples.length; i++) {
-      const clamped = Math.max(-1, Math.min(1, samples[i]));
-      buffer.writeInt16LE(Math.round(clamped * 32767), headerSize + i * 2);
-    }
+  // data chunk
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataSize, 40);
 
-    return buffer;
+  // Convert float32 → int16
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    buffer.writeInt16LE(Math.round(clamped * 32767), headerSize + i * 2);
   }
+
+  return buffer;
 }

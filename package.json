@@ -234,6 +234,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "npm run build && tsc -p tsconfig.e2e.json && vscode-test",
     "typecheck": "tsc --noEmit",
     "package": "vsce package",
     "fetch-types": "npx @vscode/dts dev"
@@ -243,6 +244,8 @@
     "@types/vscode": "^1.109.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vscode/dts": "^0.4.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0",

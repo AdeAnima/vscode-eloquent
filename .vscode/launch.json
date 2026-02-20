@@ -11,6 +11,19 @@
       ],
       "outFiles": ["${workspaceFolder}/out/**/*.js"],
       "preLaunchTask": "build"
+    },
+    {
+      "name": "E2E Smoke Tests",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionTestsPath=${workspaceFolder}/out/test/e2e",
+        "--enable-proposed-api=adeanima.vscode-eloquent",
+        "--disable-extensions"
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "preLaunchTask": "build"
     }
   ]
 }

@@ -126,7 +126,7 @@ export class F5PythonBackend implements TtsBackend {
             "Content-Type": "application/json",
             "Content-Length": Buffer.byteLength(body),
           },
-          timeout: 120_000,
+          timeout: this.config.synthesisTimeout ?? 120_000,
         },
         (res) => {
           let data = "";

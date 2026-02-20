@@ -50,11 +50,15 @@ export interface F5Config {
   refAudioPath: string;
   refText: string;
   quantization: string;
+  /** Synthesis HTTP request timeout in ms. Defaults to 120000 (2 min). */
+  synthesisTimeout?: number;
 }
 
 /** Custom HTTP endpoint backend configuration. */
 export interface CustomConfig {
   endpoint: string;
+  /** Synthesis HTTP request timeout in ms. Defaults to 120000 (2 min). */
+  synthesisTimeout?: number;
 }
 
 export interface BackendConfig {

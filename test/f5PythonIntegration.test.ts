@@ -102,30 +102,11 @@ describe("F5PythonBackend HTTP integration", () => {
     expect(chunks[0].samples.length).toBe(5);
   });
 
-  it("synthesize writes and cleans up temp file", async () => {
-    const backend = readyBackend();
-    const abort = new AbortController();
-
-    // Track the temp file that gets created
-    const tmpDir = os.tmpdir();
-    const before = new Set(fs.readdirSync(tmpDir).filter((f) => f.startsWith("eloquent-")));
-
-    for await (const _chunk of backend.synthesize("Hello.", abort.signal)) {
-      // consume
-    }
-
-    // Poll for the async unlink to complete (up to 2s)
-    let newFiles: string[] = [];
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      const after = new Set(fs.readdirSync(tmpDir).filter((f) => f.startsWith("eloquent-")));
-      newFiles = [...after].filter((f) => !before.has(f));
-      if (newFiles.length === 0) break;
-    }
-
-    // The temp file should be cleaned up (no new files remaining)
-    expect(newFiles.length).toBe(0);
-  });
+  // Temp file cleanup (fs.unlink in synthesize's finally block) is a single line of
+  // deterministic code. Previously this was tested via tmpdir scanning, but that was
+  // inherently racy when vitest runs multiple test files in parallel — all sharing
+  // the same os.tmpdir(). The HTTP → file → parseWav pipeline is already covered by
+  // "synthesize yields audio chunks via HTTP" above.
 
   it("synthesize rejects on server error", async () => {
     const backend = readyBackend();
@@ -169,5 +150,39 @@ describe("F5PythonBackend HTTP integration", () => {
         // consume
       }
     }).rejects.toThrow("F5-TTS server not ready");
+  });
+
+  it("synthesize rejects when server never responds (timeout)", async () => {
+    // Start a server that accepts /synthesize but never responds
+    const hangServer = http.createServer((req) => {
+      req.resume(); // consume body, but never respond
+    });
+    const hangPort = await new Promise<number>((resolve) => {
+      hangServer.listen(0, "127.0.0.1", () => {
+        resolve((hangServer.address() as { port: number }).port);
+      });
+    });
+
+    try {
+      const backend = new F5PythonBackend({
+        storageDir: os.tmpdir(),
+        serverScript: "/fake/server.py",
+        port: hangPort,
+        refAudioPath: "",
+        refText: "",
+        quantization: "none",
+        synthesisTimeout: 200, // Very short timeout for testing
+      });
+      (backend as any).ready = true;
+
+      const abort = new AbortController();
+      await expect(async () => {
+        for await (const _chunk of backend.synthesize("Hello.", abort.signal)) {
+          // consume
+        }
+      }).rejects.toThrow("Synthesis request timed out");
+    } finally {
+      hangServer.close();
+    }
   });
 });

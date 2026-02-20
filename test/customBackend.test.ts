@@ -179,4 +179,66 @@ describe("CustomBackend", () => {
       hangServer.close();
     }
   }, 10_000);
+
+  it("selects https client for https:// endpoints", async () => {
+    // Use an HTTPS URL pointing at a port that will refuse the connection.
+    // This exercises the `url.protocol === "https:" ? https : http` branch.
+    const backend = new CustomBackend({ endpoint: "https://127.0.0.1:1" });
+    // initialize resolves on connection error (graceful fallback)
+    await expect(backend.initialize()).resolves.toBeUndefined();
+  });
+
+  it("synthesize rejects on connection error", async () => {
+    // Point at a port with nothing listening
+    const backend = new CustomBackend({ endpoint: "http://127.0.0.1:1" });
+    const abort = new AbortController();
+
+    await expect(async () => {
+      for await (const _chunk of backend.synthesize("Hello.", abort.signal)) {
+        // consume
+      }
+    }).rejects.toThrow(); // ECONNREFUSED
+  });
+
+  it("synthesize selects https client for https:// endpoints", async () => {
+    // Use an HTTPS URL — exercises the HTTPS branch in synthesize()
+    const backend = new CustomBackend({ endpoint: "https://127.0.0.1:1" });
+    const abort = new AbortController();
+
+    await expect(async () => {
+      for await (const _chunk of backend.synthesize("Hello.", abort.signal)) {
+        // consume
+      }
+    }).rejects.toThrow(); // ECONNREFUSED on HTTPS
+  });
+
+  it("synthesize rejects when server never responds (timeout)", async () => {
+    // Start a server that accepts /synthesize but never responds
+    const hangServer = http.createServer((req) => {
+      // consume the body to prevent backpressure, but never send response
+      req.resume();
+    });
+    const hangUrl = await new Promise<string>((resolve) => {
+      hangServer.listen(0, "127.0.0.1", () => {
+        const addr = hangServer.address() as { port: number };
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const backend = new CustomBackend({
+        endpoint: hangUrl,
+        synthesisTimeout: 200, // Very short timeout for testing
+      });
+      const abort = new AbortController();
+
+      await expect(async () => {
+        for await (const _chunk of backend.synthesize("Hello.", abort.signal)) {
+          // consume
+        }
+      }).rejects.toThrow("Custom TTS request timed out");
+    } finally {
+      hangServer.close();
+    }
+  });
 });

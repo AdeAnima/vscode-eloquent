@@ -44,6 +44,9 @@ export function registerCommands(
     ),
     vscode.commands.registerCommand("eloquent.changeVoice", () =>
       changeVoice(context, services)
+    ),
+    vscode.commands.registerCommand("eloquent.toggleNarrationMode", () =>
+      toggleNarrationMode(services)
     )
   );
 }
@@ -244,6 +247,17 @@ export async function testVoice(
   } finally {
     services.statusBar.update(true);
   }
+}
+
+/** Toggle narration mode — only speak <speak> sections vs. full response. */
+export function toggleNarrationMode(services: ExtensionServices): void {
+  const config = vscode.workspace.getConfiguration("eloquent");
+  const current = config.get<boolean>("narrationMode", false);
+  const next = !current;
+  config.update("narrationMode", next, vscode.ConfigurationTarget.Global);
+  const label = next ? "Narration mode ON — only <speak> sections will be read aloud" : "Narration mode OFF — full responses will be read aloud";
+  services.outputChannel.info(label);
+  vscode.window.showInformationMessage(`Eloquent: ${label}`);
 }
 
 /** Change voice on the fly — re-creates backend with the new voice. */

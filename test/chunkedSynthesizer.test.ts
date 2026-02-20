@@ -256,4 +256,82 @@ describe("ChunkedSynthesizer", () => {
     expect(chunkCount).toBeLessThan(100);
     setMockConfig("eloquent", "prefetchBufferSize");
   });
+
+  describe("narration mode", () => {
+    it("only synthesizes text within <speak> tags when enabled", async () => {
+      setMockConfig("eloquent", "narrationMode", true);
+      const backend = fakeBackend();
+      const synth = new ChunkedSynthesizer(backend);
+
+      synth.push("Here is code:\n```js\nconsole.log('hi');\n```\n<speak>I added a console log.</speak>");
+      synth.flush();
+
+      const abort = new AbortController();
+      const chunks = await collectChunks(synth, abort.signal);
+
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      const allText = backend.calls.join(" ");
+      expect(allText).toContain("console log");
+      expect(allText).not.toContain("```");
+      setMockConfig("eloquent", "narrationMode");
+    });
+
+    it("produces no audio when narration mode is on but no <speak> tags present", async () => {
+      setMockConfig("eloquent", "narrationMode", true);
+      const backend = fakeBackend();
+      const synth = new ChunkedSynthesizer(backend);
+
+      synth.push("Just regular text without any speak tags.");
+      synth.flush();
+
+      const abort = new AbortController();
+      const chunks = await collectChunks(synth, abort.signal);
+
+      expect(chunks.length).toBe(0);
+      expect(backend.calls.length).toBe(0);
+      setMockConfig("eloquent", "narrationMode");
+    });
+
+    it("synthesizes everything when narration mode is off", async () => {
+      setMockConfig("eloquent", "narrationMode", false);
+      const backend = fakeBackend();
+      const synth = new ChunkedSynthesizer(backend);
+
+      synth.push("Hello world. <speak>Narration here.</speak>");
+      synth.flush();
+
+      const abort = new AbortController();
+      const chunks = await collectChunks(synth, abort.signal);
+
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      // Both regular text and speak content should be present since narration mode is off
+      const allText = backend.calls.join(" ");
+      expect(allText).toContain("Hello");
+      setMockConfig("eloquent", "narrationMode");
+    });
+
+    it("waits for incomplete <speak> blocks before synthesizing", async () => {
+      setMockConfig("eloquent", "narrationMode", true);
+      const backend = fakeBackend();
+      const synth = new ChunkedSynthesizer(backend);
+      const abort = new AbortController();
+
+      const chunksPromise = collectChunks(synth, abort.signal);
+
+      // Push incomplete <speak> tag — should not synthesize yet
+      synth.push("Code here.\n<speak>Starting to narrate");
+      await new Promise((r) => setTimeout(r, 30));
+      expect(backend.calls.length).toBe(0);
+
+      // Complete the tag and flush
+      synth.push("... done.</speak>");
+      synth.flush();
+
+      const chunks = await chunksPromise;
+      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      const allText = backend.calls.join(" ");
+      expect(allText).toContain("narrate");
+      setMockConfig("eloquent", "narrationMode");
+    });
+  });
 });

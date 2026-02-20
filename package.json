@@ -62,6 +62,10 @@
       {
         "command": "eloquent.changeVoice",
         "title": "Eloquent: Change Voice"
+      },
+      {
+        "command": "eloquent.toggleNarrationMode",
+        "title": "Eloquent: Toggle Narration Mode"
       }
     ],
     "walkthroughs": [
@@ -210,6 +214,11 @@
           ],
           "default": "8",
           "description": "F5-TTS model quantization (f5-python backend only)."
+        },
+        "eloquent.narrationMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, only reads <speak> sections aloud instead of the full response. Pair with the narration mode instruction file to have the LLM produce speech-friendly summaries."
         },
         "eloquent.customEndpoint": {
           "type": "string",

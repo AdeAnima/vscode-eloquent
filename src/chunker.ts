@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { AudioChunk, TtsBackend } from "./types";
 import { preprocessForSpeech } from "./textPreprocessor";
+import { extractNarration, hasIncompleteNarration } from "./narrationExtractor";
 
 /**
  * Splits text into sentence-level chunks suitable for TTS.
@@ -103,6 +104,9 @@ export class ChunkedSynthesizer {
     const prefetchSize = vscode.workspace
       .getConfiguration("eloquent")
       .get<number>("prefetchBufferSize", 2);
+    const narrationMode = vscode.workspace
+      .getConfiguration("eloquent")
+      .get<boolean>("narrationMode", false);
 
     const queue: AudioChunk[] = [];
     let producerDone = false;
@@ -131,11 +135,15 @@ export class ChunkedSynthesizer {
 
       try {
         while (!signal.aborted) {
-          const processed = preprocessForSpeech(this.buffer);
+          // In narration mode, only speak content inside <speak> tags
+          const raw = narrationMode ? extractNarration(this.buffer) : this.buffer;
+          const processed = preprocessForSpeech(raw);
           const chunks = chunkText(processed);
 
-          // Only synthesize sentence-terminated chunks unless flushed
-          const ready = this.flushed
+          // Only synthesize sentence-terminated chunks unless flushed.
+          // In narration mode, also wait for incomplete <speak> tags to close.
+          const waitForMore = narrationMode && hasIncompleteNarration(this.buffer);
+          const ready = this.flushed && !waitForMore
             ? chunks.slice(emittedUpTo)
             : chunks.slice(emittedUpTo, Math.max(0, chunks.length - 1));
 

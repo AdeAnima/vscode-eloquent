@@ -32,6 +32,7 @@ import {
   enableTts,
   toggleTts,
   setupBackend,
+  toggleNarrationMode,
   type ExtensionServices,
 } from "../src/commands";
 import { EloquentProvider } from "../src/speechProvider";
@@ -98,7 +99,7 @@ describe("commands", () => {
   // ── registerCommands ──────────────────────────────────────────────────
 
   describe("registerCommands", () => {
-    it("registers all 7 commands", () => {
+    it("registers all 8 commands", () => {
       const context = makeContext();
       const services = makeServices();
 
@@ -115,13 +116,14 @@ describe("commands", () => {
         "eloquent.pause",
         "eloquent.readAloud",
         "eloquent.changeVoice",
+        "eloquent.toggleNarrationMode",
       ]);
     });
 
     it("pushes disposables to context.subscriptions", () => {
       const context = makeContext();
       registerCommands(context, makeServices());
-      expect(context.subscriptions.length).toBe(7);
+      expect(context.subscriptions.length).toBe(8);
     });
   });
 
@@ -513,6 +515,59 @@ describe("commands", () => {
 
       expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
       expect(backend.initialize).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── toggleNarrationMode ───────────────────────────────────────────────
+
+  describe("toggleNarrationMode", () => {
+    it("toggles narrationMode from false to true", () => {
+      setMockConfig("eloquent", "narrationMode", false);
+      const services = makeServices();
+      const configUpdate = vi.fn().mockResolvedValue(undefined);
+      vi.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+        get: (_key: string, defaultValue?: unknown) => defaultValue !== undefined ? false : undefined,
+        update: configUpdate,
+      } as any);
+
+      toggleNarrationMode(services);
+
+      expect(configUpdate).toHaveBeenCalledWith(
+        "narrationMode",
+        true,
+        vscode.ConfigurationTarget.Global
+      );
+      vi.restoreAllMocks();
+    });
+
+    it("toggles narrationMode from true to false", () => {
+      setMockConfig("eloquent", "narrationMode", true);
+      const services = makeServices();
+      const configUpdate = vi.fn().mockResolvedValue(undefined);
+      vi.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+        get: (_key: string, _defaultValue?: unknown) => true,
+        update: configUpdate,
+      } as any);
+
+      toggleNarrationMode(services);
+
+      expect(configUpdate).toHaveBeenCalledWith(
+        "narrationMode",
+        false,
+        vscode.ConfigurationTarget.Global
+      );
+      vi.restoreAllMocks();
+    });
+
+    it("shows information message about new state", () => {
+      setMockConfig("eloquent", "narrationMode", false);
+      const services = makeServices();
+
+      toggleNarrationMode(services);
+
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Narration mode ON")
+      );
     });
   });
 });

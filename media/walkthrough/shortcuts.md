@@ -7,6 +7,12 @@
 | Toggle TTS on/off | `Cmd+Alt+T` | `Ctrl+Alt+T` |
 | Pause / Resume | `Cmd+Alt+P` | `Ctrl+Alt+P` |
 
+### Narration Mode
+
+By default, Eloquent reads the entire Copilot response aloud. Enable **Narration Mode** to have the LLM produce concise spoken summaries instead — only `<speak>` tagged sections are read aloud, while code and details stay silent in the chat.
+
+[Toggle Narration Mode](command:eloquent.toggleNarrationMode)
+
 ### Status Bar
 
 Look for the **EQ** indicator in the bottom-right status bar:

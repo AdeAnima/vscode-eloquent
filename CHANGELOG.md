@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-beta.4 — 2026-02-20
+
+### Added
+- **Narration mode**: when `eloquent.narrationMode` is enabled, only `<speak>` tagged sections are read aloud — code and verbose explanations stay silent in the chat
+- `narrationExtractor.ts` — streaming-safe extraction of `<speak>` blocks with incomplete-tag detection
+- LLM instruction file `.github/instructions/tts-narration-mode.instructions.md` that teaches Copilot to wrap summaries in `<speak>` tags
+- `eloquent.toggleNarrationMode` command to toggle narration mode on/off
+- Narration mode mentioned in walkthrough shortcuts page
+- 16 tests for narration extractor, 4 integration tests for chunked synthesizer narration mode, 3 command tests
+
 ## 0.1.0-beta.3 — 2026-02-20
 
 ### Added

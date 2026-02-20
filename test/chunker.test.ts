@@ -90,4 +90,11 @@ describe("chunkText", () => {
     const chunks = chunkText(input);
     expect(chunks.join(" ")).toBe(input);
   });
+
+  it("skips empty segments from split", () => {
+    // Double-spaced sentence boundaries produce empty segments after trim
+    const input = "Hello.  World.";
+    const chunks = chunkText(input, 135, 60);
+    expect(chunks.join(" ")).toBe("Hello. World.");
+  });
 });

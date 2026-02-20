@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ChunkedSynthesizer } from "../src/chunker";
-import type { AudioChunk } from "../src/types";
+import type { AudioChunk, TtsBackend } from "../src/types";
 import { fakeBackend } from "./helpers/fakeBackend";
+import { setMockConfig } from "./__mocks__/vscode";
 
 async function collectChunks(
   synth: ChunkedSynthesizer,
@@ -167,5 +168,92 @@ describe("ChunkedSynthesizer", () => {
     const allText = calls.join(" ");
     expect(allText).toContain("First");
     expect(allText).toContain("Second");
+  });
+
+  it("applies backpressure when prefetch buffer is full", async () => {
+    // Backend that yields multiple audio chunks per text segment
+    let synthesizeCalls = 0;
+    const multiChunkBackend: TtsBackend = {
+      name: "multi",
+      async initialize() {},
+      async *synthesize(_text: string): AsyncIterable<AudioChunk> {
+        synthesizeCalls++;
+        // Yield 3 chunks per synthesize call
+        for (let i = 0; i < 3; i++) {
+          yield { samples: new Float32Array([0.1 * i]), sampleRate: 24000 };
+        }
+      },
+      dispose() {},
+    };
+
+    setMockConfig("eloquent", "prefetchBufferSize", 1);
+    const synth = new ChunkedSynthesizer(multiChunkBackend);
+    synth.push("First. Second.");
+    synth.flush();
+
+    const abort = new AbortController();
+    const chunks = await collectChunks(synth, abort.signal);
+
+    // Should have collected all chunks despite small buffer
+    expect(chunks.length).toBeGreaterThanOrEqual(3);
+    expect(synthesizeCalls).toBeGreaterThanOrEqual(1);
+    setMockConfig("eloquent", "prefetchBufferSize");
+  });
+
+  it("propagates non-Error throws from backend", async () => {
+    const stringThrowBackend: TtsBackend = {
+      name: "string-throw",
+      async initialize() {},
+      async *synthesize(): AsyncIterable<AudioChunk> {
+        throw "raw string error";
+      },
+      dispose() {},
+    };
+
+    const synth = new ChunkedSynthesizer(stringThrowBackend);
+    synth.push("Hello.");
+    synth.flush();
+
+    const abort = new AbortController();
+    await expect(collectChunks(synth, abort.signal)).rejects.toThrow(
+      "raw string error"
+    );
+  });
+
+  it("abort during active synthesis stops the producer", async () => {
+    let chunkCount = 0;
+    const infiniteBackend: TtsBackend = {
+      name: "infinite",
+      async initialize() {},
+      async *synthesize(): AsyncIterable<AudioChunk> {
+        // Yield many chunks slowly — abort should interrupt
+        for (let i = 0; i < 100; i++) {
+          chunkCount++;
+          await new Promise((r) => setTimeout(r, 5));
+          yield { samples: new Float32Array([0.1]), sampleRate: 24000 };
+        }
+      },
+      dispose() {},
+    };
+
+    setMockConfig("eloquent", "prefetchBufferSize", 1);
+    const synth = new ChunkedSynthesizer(infiniteBackend);
+    synth.push("Hello.");
+    synth.flush();
+
+    const abort = new AbortController();
+    const chunks: AudioChunk[] = [];
+    // Consume one chunk then abort
+    for await (const chunk of synth.stream(abort.signal)) {
+      chunks.push(chunk);
+      if (chunks.length >= 2) {
+        abort.abort();
+        break;
+      }
+    }
+
+    expect(chunks.length).toBeLessThanOrEqual(3);
+    expect(chunkCount).toBeLessThan(100);
+    setMockConfig("eloquent", "prefetchBufferSize");
   });
 });

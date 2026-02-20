@@ -39,7 +39,6 @@ export interface BackendConfig {
   id: BackendId;
   label: string;
   description: string;
-  requiresPython: boolean;
 }
 
 export const BACKENDS: BackendConfig[] = [
@@ -48,20 +47,17 @@ export const BACKENDS: BackendConfig[] = [
     label: "Kokoro (Recommended)",
     description:
       "82M-param model, runs in Node.js via ONNX Runtime. No Python needed. 50+ voices. ~80 MB download.",
-    requiresPython: false,
   },
   {
     id: "f5-python",
     label: "F5-TTS (Voice Cloning)",
     description:
       "330M-param model on Apple Silicon via MLX. Supports voice cloning. Auto-downloads a standalone Python runtime (~1.5 GB total).",
-    requiresPython: true,
   },
   {
     id: "custom",
     label: "Custom Endpoint",
     description:
       "Bring your own TTS server. Point the extension at any HTTP endpoint that accepts POST /synthesize with { text } and returns WAV audio.",
-    requiresPython: false,
   },
 ];

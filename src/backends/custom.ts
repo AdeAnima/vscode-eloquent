@@ -97,7 +97,6 @@ export class CustomBackend implements TtsBackend {
 
       if (signal.aborted) return;
 
-      const contentType = "audio/wav"; // assume WAV
       const audioData = this.parseWav(wavBuffer);
       yield audioData;
     }

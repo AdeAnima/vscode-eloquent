@@ -31,6 +31,12 @@ export enum ConfigurationTarget {
   WorkspaceFolder = 3,
 }
 
+export enum ProgressLocation {
+  SourceControl = 1,
+  Window = 10,
+  Notification = 15,
+}
+
 export const window = {
   createOutputChannel: (_name: string) => ({
     appendLine: () => {},
@@ -50,6 +56,8 @@ export const window = {
   }),
   showInformationMessage: () => {},
   showErrorMessage: () => {},
+  withProgress: (_opts: any, task: (progress: any) => Promise<any>) =>
+    task({ report: () => {} }),
 };
 
 export enum TextToSpeechStatus {

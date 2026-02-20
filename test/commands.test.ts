@@ -65,6 +65,9 @@ function makeServices(
     provider: new EloquentProvider(),
     outputChannel: {
       appendLine: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
       show: vi.fn(),
       dispose: vi.fn(),
     } as any,

@@ -9,6 +9,13 @@ vi.mock("../src/installer", () => ({
   ensurePythonEnvironment: vi.fn().mockResolvedValue("/fake/python3"),
 }));
 
+// Mock setup (prevent real backend creation)
+vi.mock("../src/setup", () => ({
+  runSetupWizard: vi.fn().mockResolvedValue(undefined),
+  createBackend: vi.fn().mockResolvedValue(undefined),
+  showVoicePicker: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ─── Enhanced vscode mock for extension integration ───────────────────────────
 // We need commands, speech, ProgressLocation, withProgress, etc.
 
@@ -25,6 +32,7 @@ let statusBars: Array<{
 
 let configValues: Record<string, any> = {};
 const configUpdates: Array<{ key: string; value: any }> = [];
+let onConfigChangeListeners: Array<(e: any) => void> = [];
 
 vi.mock("vscode", () => {
   const EventEmitter = class<T = void> {
@@ -65,10 +73,22 @@ vi.mock("vscode", () => {
           return Promise.resolve();
         }),
       }),
+      onDidChangeConfiguration: vi.fn().mockImplementation((listener: (e: any) => void) => {
+        onConfigChangeListeners.push(listener);
+        return { dispose: () => {
+          const idx = onConfigChangeListeners.indexOf(listener);
+          if (idx >= 0) onConfigChangeListeners.splice(idx, 1);
+        }};
+      }),
     },
     window: {
       createOutputChannel: vi.fn().mockReturnValue({
         appendLine: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
         show: vi.fn(),
         dispose: vi.fn(),
       }),
@@ -127,6 +147,7 @@ vi.mock("vscode", () => {
 });
 
 import * as vscode from "vscode";
+import { createBackend } from "../src/setup";
 
 // ─── Fake backend for testing ─────────────────────────────────────────────────
 
@@ -161,6 +182,7 @@ describe("extension integration", () => {
     statusBars = [];
     configValues = {};
     configUpdates.length = 0;
+    onConfigChangeListeners = [];
     vi.clearAllMocks();
 
     fakeContext = {
@@ -219,7 +241,8 @@ describe("extension integration", () => {
       await ext.activate(fakeContext);
 
       expect(vscode.window.createOutputChannel).toHaveBeenCalledWith(
-        "Eloquent"
+        "Eloquent",
+        { log: true }
       );
     });
   });
@@ -293,6 +316,74 @@ describe("extension integration", () => {
 
       // Should not throw
       ext.deactivate();
+    });
+  });
+
+  describe("onDidChangeConfiguration", () => {
+    it("registers a config change listener", async () => {
+      const ext = await import("../src/extension");
+      await ext.activate(fakeContext);
+
+      expect(onConfigChangeListeners.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("ignores non-eloquent config changes", async () => {
+      const ext = await import("../src/extension");
+      await ext.activate(fakeContext);
+
+      const event = { affectsConfiguration: (s: string) => s === "editor.fontSize" };
+      for (const listener of onConfigChangeListeners) {
+        await listener(event);
+      }
+
+      // No interaction with createBackend
+      expect(createBackend).not.toHaveBeenCalled();
+    });
+
+    it("disables TTS when eloquent.enabled changes to false", async () => {
+      const ext = await import("../src/extension");
+      // Start with a backend configured and enabled
+      const backend = fakeBackend();
+      vi.mocked(createBackend).mockResolvedValueOnce(backend);
+      configValues = { backend: "kokoro", enabled: true };
+      await ext.activate(fakeContext);
+
+      // Now simulate enabled → false
+      configValues.enabled = false;
+      const event = {
+        affectsConfiguration: (s: string) =>
+          s === "eloquent" || s === "eloquent.enabled",
+      };
+      for (const listener of onConfigChangeListeners) {
+        await listener(event);
+      }
+
+      // disableTts logs "TTS disabled."
+      const outputChannel = vi.mocked(vscode.window.createOutputChannel).mock.results[0]?.value;
+      expect(outputChannel.info).toHaveBeenCalledWith("TTS disabled.");
+    });
+
+    it("re-initializes backend when a backend setting changes", async () => {
+      const ext = await import("../src/extension");
+      // Start with an active backend
+      const initialBackend = fakeBackend();
+      vi.mocked(createBackend).mockResolvedValueOnce(initialBackend);
+      configValues = { backend: "kokoro", enabled: true };
+      await ext.activate(fakeContext);
+
+      // Simulate voice setting change
+      const newBackend = fakeBackend();
+      vi.mocked(createBackend).mockResolvedValueOnce(newBackend);
+      const event = {
+        affectsConfiguration: (s: string) =>
+          s === "eloquent" || s === "eloquent.voice",
+      };
+      for (const listener of onConfigChangeListeners) {
+        await listener(event);
+      }
+
+      // Should have called createBackend a second time for the re-init
+      expect(createBackend).toHaveBeenCalledTimes(2);
     });
   });
 });

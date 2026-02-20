@@ -4,16 +4,19 @@ import { StatusBarManager } from "./statusBar";
 import {
   registerCommands,
   enableTts,
+  disableTts,
+  initializeAndRegister,
   type ExtensionServices,
 } from "./commands";
+import { createBackend } from "./setup";
 import type { BackendId } from "./types";
 
 let services: ExtensionServices;
 
 export async function activate(context: vscode.ExtensionContext) {
   try {
-    const outputChannel = vscode.window.createOutputChannel("Eloquent");
-    outputChannel.appendLine("Eloquent extension activating...");
+    const outputChannel = vscode.window.createOutputChannel("Eloquent", { log: true });
+    outputChannel.info("Eloquent extension activating...");
     context.subscriptions.push(outputChannel);
 
     const statusBar = new StatusBarManager();
@@ -38,6 +41,50 @@ export async function activate(context: vscode.ExtensionContext) {
 
     registerCommands(context, services);
 
+    // --- React to settings changes at runtime ---
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(async (e) => {
+        if (!e.affectsConfiguration("eloquent")) return;
+
+        if (e.affectsConfiguration("eloquent.enabled")) {
+          const nowEnabled = vscode.workspace
+            .getConfiguration("eloquent")
+            .get<boolean>("enabled", true);
+          if (nowEnabled && !services.speechRegistration) {
+            await enableTts(context, services);
+          } else if (!nowEnabled && services.speechRegistration) {
+            disableTts(services);
+          }
+          return;
+        }
+
+        // Settings that require backend re-creation
+        const backendSettings = [
+          "eloquent.backend",
+          "eloquent.voice",
+          "eloquent.kokoroDtype",
+          "eloquent.serverPort",
+          "eloquent.refAudioPath",
+          "eloquent.refText",
+          "eloquent.quantization",
+          "eloquent.customEndpoint",
+        ];
+        const needsReinit = backendSettings.some((s) =>
+          e.affectsConfiguration(s)
+        );
+        if (needsReinit && services.speechRegistration) {
+          const cfg = vscode.workspace.getConfiguration("eloquent");
+          const bid = cfg.get<string>("backend", "") as BackendId | "";
+          if (!bid) return;
+          outputChannel.info(`Settings changed — re-initializing ${bid} backend…`);
+          const backend = await createBackend(bid as BackendId, context);
+          if (backend) {
+            await initializeAndRegister(context, services, backend);
+          }
+        }
+      })
+    );
+
     // --- First-run / restore ---
     const config = vscode.workspace.getConfiguration("eloquent");
     const backendId = config.get<string>("backend", "") as BackendId | "";
@@ -45,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     if (!backendId) {
       statusBar.showSetup();
-      outputChannel.appendLine("No backend configured — opening walkthrough.");
+      outputChannel.info("No backend configured — opening walkthrough.");
       vscode.commands.executeCommand(
         "workbench.action.openWalkthrough",
         "adeanima.vscode-eloquent#eloquent.welcome",

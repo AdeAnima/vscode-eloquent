@@ -21,6 +21,7 @@ export const workspace = {
     },
     update: vi.fn().mockResolvedValue(undefined),
   }),
+  onDidChangeConfiguration: vi.fn().mockReturnValue({ dispose: () => {} }),
 };
 
 export const commands = {
@@ -49,8 +50,13 @@ export enum ProgressLocation {
 }
 
 export const window = {
-  createOutputChannel: (_name: string) => ({
+  createOutputChannel: (_name: string, _options?: { log: true }) => ({
     appendLine: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+    trace: () => {},
     show: () => {},
     dispose: () => {},
   }),

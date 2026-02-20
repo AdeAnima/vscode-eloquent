@@ -13,7 +13,7 @@ import type { BackendId, TtsBackend } from "./types";
  */
 export interface ExtensionServices {
   provider: EloquentProvider;
-  outputChannel: vscode.OutputChannel;
+  outputChannel: vscode.LogOutputChannel;
   statusBar: StatusBarManager;
   speechRegistration: vscode.Disposable | undefined;
 }
@@ -93,7 +93,7 @@ export function disableTts(services: ExtensionServices): void {
     .update("enabled", false, vscode.ConfigurationTarget.Global);
 
   services.statusBar.update(false);
-  services.outputChannel.appendLine("TTS disabled.");
+  services.outputChannel.info("TTS disabled.");
 }
 
 /** Toggle TTS on/off. */
@@ -125,8 +125,8 @@ export async function initializeAndRegister(
   services.statusBar.update(false, true); // loading
 
   try {
-    services.outputChannel.appendLine(`Initializing ${backend.name} backend…`);
-    services.outputChannel.appendLine(
+    services.outputChannel.info(`Initializing ${backend.name} backend…`);
+    services.outputChannel.info(
       "This includes downloading the model on first run (~80 MB for Kokoro q8)."
     );
     await vscode.window.withProgress(
@@ -140,10 +140,10 @@ export async function initializeAndRegister(
         await backend.initialize();
       }
     );
-    services.outputChannel.appendLine(`${backend.name} backend ready.`);
+    services.outputChannel.info(`${backend.name} backend ready.`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    services.outputChannel.appendLine(`Backend init failed: ${msg}`);
+    services.outputChannel.error(`Backend init failed: ${msg}`);
     vscode.window.showErrorMessage(
       `Eloquent: Failed to initialize ${backend.name}. Check output for details.`
     );
@@ -239,7 +239,7 @@ export async function testVoice(
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    services.outputChannel.appendLine(`Voice test failed: ${msg}`);
+    services.outputChannel.error(`Voice test failed: ${msg}`);
     vscode.window.showErrorMessage(`Eloquent: Voice test failed — ${msg}`);
   } finally {
     services.statusBar.update(true);

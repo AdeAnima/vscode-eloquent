@@ -1,5 +1,4 @@
 import type { AudioChunk, TtsBackend } from "../types";
-import { chunkText } from "../chunker";
 import { parseWav } from "../wavParser";
 import { ensurePythonEnvironment } from "../installer";
 import { ChildProcess, spawn } from "child_process";
@@ -43,20 +42,17 @@ export class F5PythonBackend implements TtsBackend {
       throw new Error("F5-TTS server not ready");
     }
 
-    const chunks = chunkText(text);
-    for (const chunk of chunks) {
+    if (signal.aborted) return;
+
+    const tmpFile = path.join(os.tmpdir(), `eloquent-${Date.now()}.wav`);
+    try {
+      await this.requestSynthesis(text, tmpFile);
       if (signal.aborted) return;
 
-      const tmpFile = path.join(os.tmpdir(), `eloquent-${Date.now()}.wav`);
-      try {
-        await this.requestSynthesis(chunk, tmpFile);
-        if (signal.aborted) return;
-
-        const wavBuffer = fs.readFileSync(tmpFile);
-        yield parseWav(wavBuffer);
-      } finally {
-        fs.unlink(tmpFile, () => {});
-      }
+      const wavBuffer = fs.readFileSync(tmpFile);
+      yield parseWav(wavBuffer);
+    } finally {
+      fs.unlink(tmpFile, () => {});
     }
   }
 

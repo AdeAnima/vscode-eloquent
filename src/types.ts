@@ -20,11 +20,11 @@ export interface TtsBackend {
   initialize(): Promise<void>;
 
   /**
-   * Synthesize text into audio chunks.
-   * The backend splits text into speakable pieces internally and yields
-   * one AudioChunk per piece — this is chunk-level streaming.
+   * Synthesize a single pre-chunked text segment into audio.
+   * Callers are responsible for splitting text into sentence-level chunks
+   * (via `chunkText()` or `ChunkedSynthesizer`) before calling this method.
    *
-   * @param text Full text to synthesize
+   * @param text Pre-chunked text segment to synthesize
    * @param signal Abort signal — backend must stop generating when triggered
    */
   synthesize(text: string, signal: AbortSignal): AsyncIterable<AudioChunk>;

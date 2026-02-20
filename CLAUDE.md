@@ -9,7 +9,7 @@ VS Code extension replacing built-in TTS with high-quality local speech synthesi
 ```bash
 npm install          # install dependencies
 npm run build        # esbuild → out/extension.js
-npm test             # vitest (50+ tests)
+npm test             # vitest (133 tests)
 npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
 ```
@@ -58,7 +58,7 @@ Run `npm test` before every commit. Run `npm run build && npm run typecheck` bef
 - `src/chunker.ts` — `chunkText()` sentence splitting + `ChunkedSynthesizer` prefetch buffer
 - `src/textPreprocessor.ts` — Markdown → speech-friendly plain text (code blocks, tables, links, etc.)
 - `src/player.ts` — Platform-native audio playback with pause/resume (SIGSTOP/SIGCONT)
-- `src/speechProvider.ts` — VS Code `SpeechProvider` + `StreamingTextToSpeechSession` (150ms initial batching)
+- `src/speechProvider.ts` — VS Code `SpeechProvider` + `StreamingTextToSpeechSession` (configurable `initialBatchDelay`)
 - `src/extension.ts` — Entry point, 7 commands, status bar, walkthrough trigger
 - `src/setup.ts` — Backend picker, voice picker (28 Kokoro voices), `createBackend()` factory
 - `src/installer.ts` — Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
@@ -74,6 +74,15 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 - `test/textPreprocessor.test.ts` — Markdown preprocessing (headings, tables, code blocks, URLs, etc.)
 - `test/chunker.test.ts` — Sentence splitting and chunk sizing
 - `test/chunkedSynthesizer.test.ts` — Streaming, abort, prefetch buffer
+- `test/speechProvider.test.ts` — Provider lifecycle, pause/resume, session creation
+- `test/sessionIntegration.test.ts` — Full session lifecycle: synthesize → events, cancellation, errors
+- `test/player.test.ts` — Audio playback, platform detection, pause/resume signals
+- `test/kokoroBackend.test.ts` — Kokoro backend initialization, synthesis
+- `test/customBackend.test.ts` — Custom HTTP backend, WAV parsing
+- `test/wavParser.test.ts` — WAV header parsing, validation
+- `test/server.test.ts` — F5-TTS server lifecycle
+- `test/f5PythonBackend.test.ts` — F5-Python backend, subprocess management
+- `test/setup.test.ts` — Backend picker, voice picker, setup flow
 
 ## Conventions
 

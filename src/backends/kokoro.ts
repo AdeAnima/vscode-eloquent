@@ -1,5 +1,4 @@
 import type { AudioChunk, TtsBackend } from "../types";
-import { chunkText } from "../chunker";
 import { ensureKokoroInstalled } from "../installer";
 
 /**
@@ -42,23 +41,20 @@ export class KokoroBackend implements TtsBackend {
       throw new Error("Kokoro backend not initialized");
     }
 
-    const chunks = chunkText(text);
-    for (const chunk of chunks) {
-      if (signal.aborted) return;
+    if (signal.aborted) return;
 
-      const result = await this.tts.generate(chunk, { voice: this.voice });
+    const result = await this.tts.generate(text, { voice: this.voice });
 
-      if (signal.aborted) return;
+    if (signal.aborted) return;
 
-      // kokoro-js returns { audio: Float32Array, sampling_rate: number }
-      // or an object with a .toWav() / data property — normalize here
-      const samples =
-        result.audio instanceof Float32Array
-          ? result.audio
-          : new Float32Array(result.audio);
+    // kokoro-js returns { audio: Float32Array, sampling_rate: number }
+    // or an object with a .toWav() / data property — normalize here
+    const samples =
+      result.audio instanceof Float32Array
+        ? result.audio
+        : new Float32Array(result.audio);
 
-      yield { samples, sampleRate: result.sampling_rate ?? 24000 };
-    }
+    yield { samples, sampleRate: result.sampling_rate ?? 24000 };
   }
 
   dispose(): void {

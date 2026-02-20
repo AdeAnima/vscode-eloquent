@@ -1,5 +1,4 @@
 import type { AudioChunk, TtsBackend } from "../types";
-import { chunkText } from "../chunker";
 import { parseWav } from "../wavParser";
 import * as http from "http";
 import * as https from "https";
@@ -51,55 +50,51 @@ export class CustomBackend implements TtsBackend {
     text: string,
     signal: AbortSignal
   ): AsyncIterable<AudioChunk> {
-    const chunks = chunkText(text);
+    if (signal.aborted) return;
 
-    for (const chunk of chunks) {
-      if (signal.aborted) return;
+    const url = new URL(this.endpoint);
+    const client = url.protocol === "https:" ? https : http;
+    const body = JSON.stringify({ text });
 
-      const url = new URL(this.endpoint);
-      const client = url.protocol === "https:" ? https : http;
-      const body = JSON.stringify({ text: chunk });
-
-      const wavBuffer = await new Promise<Buffer>((resolve, reject) => {
-        const req = client.request(
-          `${url.origin}/synthesize`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Content-Length": Buffer.byteLength(body),
-            },
-            timeout: 120_000,
+    const wavBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const req = client.request(
+        `${url.origin}/synthesize`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
           },
-          (res) => {
-            const parts: Buffer[] = [];
-            res.on("data", (chunk: Buffer) => parts.push(chunk));
-            res.on("end", () => {
-              if (res.statusCode === 200) {
-                resolve(Buffer.concat(parts));
-              } else {
-                reject(
-                  new Error(
-                    `Custom TTS returned ${res.statusCode}: ${Buffer.concat(parts).toString()}`
-                  )
-                );
-              }
-            });
-          }
-        );
-        req.on("error", reject);
-        req.on("timeout", () => {
-          req.destroy();
-          reject(new Error("Custom TTS request timed out"));
-        });
-        req.write(body);
-        req.end();
+          timeout: 120_000,
+        },
+        (res) => {
+          const parts: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => parts.push(chunk));
+          res.on("end", () => {
+            if (res.statusCode === 200) {
+              resolve(Buffer.concat(parts));
+            } else {
+              reject(
+                new Error(
+                  `Custom TTS returned ${res.statusCode}: ${Buffer.concat(parts).toString()}`
+                )
+              );
+            }
+          });
+        }
+      );
+      req.on("error", reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Custom TTS request timed out"));
       });
+      req.write(body);
+      req.end();
+    });
 
-      if (signal.aborted) return;
+    if (signal.aborted) return;
 
-      yield parseWav(wavBuffer);
-    }
+    yield parseWav(wavBuffer);
   }
 
   dispose(): void {

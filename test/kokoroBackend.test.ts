@@ -117,9 +117,7 @@ describe("KokoroBackend", () => {
   it("synthesize stops after abort mid-generation", async () => {
     const backend = new KokoroBackend();
 
-    let callCount = 0;
     const generateFn = vi.fn().mockImplementation(async () => {
-      callCount++;
       return {
         audio: new Float32Array([0.1]),
         sampling_rate: 24000,
@@ -128,18 +126,19 @@ describe("KokoroBackend", () => {
     (backend as any).tts = { generate: generateFn };
 
     const abort = new AbortController();
+    // Backend now receives pre-chunked text, so a single call yields one chunk.
+    // Abort after first chunk means it still produces one.
     const chunks: AudioChunk[] = [];
 
     for await (const chunk of backend.synthesize(
-      "Sentence one. Sentence two. Sentence three.",
+      "Sentence one.",
       abort.signal
     )) {
       chunks.push(chunk);
       abort.abort(); // Abort after first chunk
     }
 
-    // Should have produced at most 1-2 chunks (race condition with abort)
-    expect(chunks.length).toBeLessThanOrEqual(2);
+    expect(chunks.length).toBe(1);
   });
 
   it("dispose nulls the tts instance", () => {

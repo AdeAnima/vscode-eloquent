@@ -185,10 +185,19 @@ vscode-eloquent/
 │   ├── tts_server.py         # Python HTTP server wrapping f5-tts-mlx
 │   └── requirements.txt      # f5-tts-mlx>=0.2.6
 ├── test/
-│   ├── textPreprocessor.test.ts   # ~30 test cases: all markdown transformations
-│   ├── chunker.test.ts            # ~11 test cases: sentence splitting, chunk sizing
-│   ├── chunkedSynthesizer.test.ts # ~6 test cases: streaming, abort, prefetch
-│   └── __mocks__/vscode.ts        # Minimal vscode mock for vitest
+│   ├── textPreprocessor.test.ts   # 34 tests: all markdown transformations
+│   ├── chunker.test.ts            # 12 tests: sentence splitting, chunk sizing
+│   ├── chunkedSynthesizer.test.ts # 6 tests: streaming, abort, prefetch
+│   ├── speechProvider.test.ts     # 15 tests: provider lifecycle, sessions
+│   ├── sessionIntegration.test.ts # 8 tests: full session lifecycle integration
+│   ├── player.test.ts             # 13 tests: audio playback, signals
+│   ├── kokoroBackend.test.ts      # 8 tests: Kokoro backend
+│   ├── customBackend.test.ts      # 7 tests: Custom HTTP backend
+│   ├── wavParser.test.ts          # 8 tests: WAV parsing
+│   ├── server.test.ts             # 8 tests: F5-TTS server
+│   ├── f5PythonBackend.test.ts    # 5 tests: F5-Python backend
+│   ├── setup.test.ts              # 9 tests: setup flow
+│   └── __mocks__/vscode.ts        # VS Code mock with EventEmitter, CancellationToken
 ├── media/
 │   └── walkthrough/          # 4 markdown files for onboarding walkthrough
 ├── .github/
@@ -286,6 +295,7 @@ vscode-eloquent/
 | `eloquent.voice` | string | `af_heart` | Kokoro voice preset (28 options) |
 | `eloquent.speed` | number | `1.0` | Playback speed multiplier (0.5–2.0) |
 | `eloquent.prefetchBufferSize` | number | `2` | Chunks to synthesize ahead of playback (1–10) |
+| `eloquent.initialBatchDelay` | number | `150` | Milliseconds to wait before starting synthesis (0–1000). Lower = faster start |
 | `eloquent.kokoroDtype` | string | `q8` | Kokoro model quantization: `fp32`, `fp16`, `q8`, `q4` |
 | `eloquent.serverPort` | number | `18230` | F5-TTS Python server port |
 | `eloquent.refAudioPath` | string | `""` | Reference audio for voice cloning (F5-TTS only) |
@@ -324,13 +334,22 @@ vscode-eloquent/
 
 ## 12. Tests
 
-47 test cases across 3 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
+133 test cases across 12 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
 
 | File | Cases | What's Tested |
 |------|-------|---------------|
-| `test/textPreprocessor.test.ts` | ~30 | All markdown-to-speech transformations |
-| `test/chunker.test.ts` | ~11 | `chunkText()`: sentence splitting, chunk sizing, delimiters |
-| `test/chunkedSynthesizer.test.ts` | ~6 | Streaming, abort, prefetch buffer, error propagation |
+| `test/textPreprocessor.test.ts` | 34 | All markdown-to-speech transformations |
+| `test/chunker.test.ts` | 12 | `chunkText()`: sentence splitting, chunk sizing, delimiters |
+| `test/chunkedSynthesizer.test.ts` | 6 | Streaming, abort, prefetch buffer, error propagation |
+| `test/speechProvider.test.ts` | 15 | Provider lifecycle, pause/resume, session creation |
+| `test/sessionIntegration.test.ts` | 8 | Full session lifecycle: synthesize → events, cancellation, errors |
+| `test/player.test.ts` | 13 | Audio playback, platform detection, pause/resume signals |
+| `test/kokoroBackend.test.ts` | 8 | Kokoro backend initialization, synthesis, model loading |
+| `test/customBackend.test.ts` | 7 | Custom HTTP backend, WAV parsing, error handling |
+| `test/wavParser.test.ts` | 8 | WAV header parsing, validation, edge cases |
+| `test/server.test.ts` | 8 | F5-TTS server lifecycle, health checks |
+| `test/f5PythonBackend.test.ts` | 5 | F5-Python backend, subprocess management |
+| `test/setup.test.ts` | 9 | Backend picker, voice picker, setup flow |
 
 ```bash
 npm test             # vitest run (all tests)
@@ -341,9 +360,7 @@ npm run test:watch   # vitest in watch mode
 
 ## 13. Known Issues & Tech Debt
 
-1. **150ms batching**: `StreamingTextToSpeechSession` waits 150ms after the first `synthesize()` call before flushing. This batches initial tokens but introduces a fixed delay. Could be made configurable or adaptive.
-2. **Kokoro TextSplitterStream unused**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming, but the extension uses its own `chunkText()` + `ChunkedSynthesizer` instead. The custom implementation gives more control over chunk sizing and prefetch, but the tradeoff should be revisited.
-3. **No integration tests**: Only unit tests exist. No tests for the full session lifecycle, backend initialization, or audio playback.
+1. **Kokoro TextSplitterStream unused**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming, but the extension uses its own `chunkText()` + `ChunkedSynthesizer` instead. The custom implementation gives more control over chunk sizing and prefetch, but the tradeoff should be revisited.
 
 ---
 

@@ -250,8 +250,12 @@ async function readSelectionAloud() {
 
   try {
     const spoken = preprocessForSpeech(text);
-    for await (const chunk of backend.synthesize(spoken, abort.signal)) {
-      await player.play(chunk);
+    const textChunks = chunkText(spoken);
+    for (const textChunk of textChunks) {
+      if (abort.signal.aborted) break;
+      for await (const audio of backend.synthesize(textChunk, abort.signal)) {
+        await player.play(audio);
+      }
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -267,8 +271,12 @@ async function testVoice(backend: TtsBackend) {
 
   try {
     statusBar.text = "$(loading~spin) EQ";
-    for await (const chunk of backend.synthesize(testText, abort.signal)) {
-      await player.play(chunk);
+    const textChunks = chunkText(testText);
+    for (const textChunk of textChunks) {
+      if (abort.signal.aborted) break;
+      for await (const audio of backend.synthesize(textChunk, abort.signal)) {
+        await player.play(audio);
+      }
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

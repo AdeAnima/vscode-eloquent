@@ -49,8 +49,8 @@ describe("preprocessForSpeech", () => {
     });
 
     it("strips inline code backticks", () => {
-      expect(preprocessForSpeech("Use `npm install` to install")).toBe(
-        "Use npm install to install"
+      expect(preprocessForSpeech("Use `forEach` to iterate")).toBe(
+        "Use forEach to iterate"
       );
     });
   });
@@ -239,9 +239,84 @@ describe("preprocessForSpeech", () => {
       expect(result).toContain("Getting Started.");
       expect(result).toContain("one click");
       expect(result).not.toContain("**");
-      expect(result).toContain("bash code example: npm install eloquent");
+      expect(result).toContain("bash code example:");
       expect(result).toContain("the docs");
       expect(result).not.toContain("https://");
+    });
+  });
+
+  // --- Special characters ---
+  describe("special characters", () => {
+    it("replaces arrows with words", () => {
+      expect(preprocessForSpeech("A → B")).toBe("A to B");
+      expect(preprocessForSpeech("A ← B")).toBe("A from B");
+      expect(preprocessForSpeech("A ↔ B")).toBe("A between B");
+    });
+
+    it("replaces em dash and en dash with comma", () => {
+      expect(preprocessForSpeech("foo — bar")).toBe("foo , bar");
+      expect(preprocessForSpeech("foo – bar")).toBe("foo , bar");
+    });
+
+    it("removes bullet character", () => {
+      expect(preprocessForSpeech("• first item")).toBe("first item");
+    });
+
+    it("replaces checkmarks and crosses", () => {
+      expect(preprocessForSpeech("✓ Done")).toBe("yes Done");
+      expect(preprocessForSpeech("✗ Failed")).toBe("no Failed");
+      expect(preprocessForSpeech("❌ Error")).toBe("no Error");
+    });
+
+    it("replaces warning and info emoji", () => {
+      expect(preprocessForSpeech("⚠️ careful")).toBe("warning: careful");
+      expect(preprocessForSpeech("ℹ️ note")).toBe("note: note");
+    });
+
+    it("strips common emoji", () => {
+      expect(preprocessForSpeech("Great job! 🎉🚀")).toBe("Great job!");
+      expect(preprocessForSpeech("Hello 👋 world")).toBe("Hello world");
+    });
+  });
+
+  // --- Abbreviation expansion ---
+  describe("abbreviation expansion", () => {
+    it("expands npm on first use", () => {
+      const result = preprocessForSpeech("Use npm to install packages.");
+      expect(result).toContain("NPM, the Node Package Manager,");
+    });
+
+    it("expands only on first occurrence", () => {
+      const result = preprocessForSpeech("Use npm to install. Then run npm start.");
+      // First occurrence expanded, second stays as-is
+      expect(result).toContain("NPM, the Node Package Manager,");
+      expect(result).toMatch(/npm start/);
+    });
+
+    it("expands API", () => {
+      expect(preprocessForSpeech("the api is ready")).toContain("A P I");
+    });
+
+    it("expands URL", () => {
+      expect(preprocessForSpeech("enter the url here")).toContain("U R L");
+    });
+
+    it("does not expand within words", () => {
+      // "dev" should not be expanded inside "developer"
+      expect(preprocessForSpeech("developer tools")).toBe("developer tools");
+    });
+
+    it("expands vscode to VS Code", () => {
+      expect(preprocessForSpeech("open vscode")).toContain("VS Code");
+    });
+
+    it("is case-insensitive", () => {
+      expect(preprocessForSpeech("the CLI tool")).toContain("C L I");
+      expect(preprocessForSpeech("the cli tool")).toContain("C L I");
+    });
+
+    it("expands TTS", () => {
+      expect(preprocessForSpeech("enable tts output")).toContain("T T S");
     });
   });
 });

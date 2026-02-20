@@ -3,7 +3,7 @@
  *
  * Handles: headings, bold/italic/strikethrough, code spans, fenced code blocks,
  * links, images, lists, blockquotes, horizontal rules, HTML tags, tables,
- * and excessive whitespace.
+ * emoji/special characters, common abbreviations, and excessive whitespace.
  *
  * Designed for incremental use — safe to call on partial/accumulating buffers.
  */
@@ -92,8 +92,29 @@ export function preprocessForSpeech(text: string): string {
   result = result.replace(/&#39;/g, "'");
   result = result.replace(/&nbsp;/g, " ");
 
-  // Bare URLs: don't read full URLs, just say "link"
+  // Special characters commonly used by LLMs → speech-friendly replacements
+  result = result.replace(/→/g, " to ");
+  result = result.replace(/←/g, " from ");
+  result = result.replace(/↔/g, " between ");
+  result = result.replace(/—/g, ", ");
+  result = result.replace(/–/g, ", ");
+  result = result.replace(/•/g, "");
+  result = result.replace(/✓|✔|☑/g, "yes");
+  result = result.replace(/✗|✘|☒|❌/g, "no");
+  result = result.replace(/⚠️?/g, "warning: ");
+  result = result.replace(/ℹ️?/g, "note: ");
+
+  // Strip remaining emoji (Unicode emoji ranges)
+  result = result.replace(
+    /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]/gu,
+    ""
+  );
+
+  // Bare URLs: replace before abbreviation expansion (prevents "https" expansion)
   result = result.replace(/https?:\/\/\S+/g, "link");
+
+  // Expand common abbreviations (case-insensitive, word-boundary, first occurrence only)
+  result = expandAbbreviations(result);
 
   // Collapse multiple blank lines into one
   result = result.replace(/\n{3,}/g, "\n\n");
@@ -148,4 +169,94 @@ function parseCells(row: string): string[] {
 
 function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Common tech abbreviations → spoken expansions.
+ * Only expands standalone occurrences (word boundaries), preserving case context.
+ */
+const ABBREVIATIONS: ReadonlyMap<string, string> = new Map([
+  ["npm", "NPM, the Node Package Manager,"],
+  ["api", "A P I"],
+  ["apis", "A P Is"],
+  ["url", "U R L"],
+  ["urls", "U R Ls"],
+  ["html", "H T M L"],
+  ["css", "C S S"],
+  ["json", "JSON"],
+  ["sql", "S Q L"],
+  ["cli", "C L I"],
+  ["gui", "G U I"],
+  ["sdk", "S D K"],
+  ["ide", "I D E"],
+  ["cpu", "C P U"],
+  ["gpu", "G P U"],
+  ["ram", "RAM"],
+  ["tts", "T T S"],
+  ["llm", "L L M"],
+  ["llms", "L L Ms"],
+  ["ai", "A I"],
+  ["ml", "M L"],
+  ["os", "O S"],
+  ["ui", "U I"],
+  ["ux", "U X"],
+  ["ci", "C I"],
+  ["cd", "C D"],
+  ["pr", "P R"],
+  ["prs", "P Rs"],
+  ["ssr", "S S R"],
+  ["ssr", "S S R"],
+  ["dns", "D N S"],
+  ["tcp", "T C P"],
+  ["http", "H T T P"],
+  ["https", "H T T P S"],
+  ["ssh", "S S H"],
+  ["jwt", "J W T"],
+  ["oauth", "O Auth"],
+  ["env", "environment"],
+  ["repo", "repository"],
+  ["repos", "repositories"],
+  ["config", "configuration"],
+  ["configs", "configurations"],
+  ["auth", "authentication"],
+  ["dev", "development"],
+  ["deps", "dependencies"],
+  ["impl", "implementation"],
+  ["fn", "function"],
+  ["args", "arguments"],
+  ["params", "parameters"],
+  ["async", "async"],
+  ["src", "source"],
+  ["dist", "distribution"],
+  ["pkg", "package"],
+  ["db", "database"],
+  ["vscode", "VS Code"],
+]);
+
+/** Build regex lazily from the abbreviation map. */
+let abbreviationRegex: RegExp | undefined;
+
+function getAbbreviationRegex(): RegExp {
+  if (!abbreviationRegex) {
+    // Sort by length descending so longer matches win (e.g. "https" before "http")
+    const keys = [...ABBREVIATIONS.keys()].sort(
+      (a, b) => b.length - a.length
+    );
+    abbreviationRegex = new RegExp(
+      `\\b(${keys.join("|")})\\b`,
+      "gi"
+    );
+  }
+  return abbreviationRegex;
+}
+
+function expandAbbreviations(text: string): string {
+  // Track which abbreviations have been expanded (first-use only)
+  const seen = new Set<string>();
+  return text.replace(getAbbreviationRegex(), (match) => {
+    const key = match.toLowerCase();
+    if (seen.has(key)) return match;
+    seen.add(key);
+    return ABBREVIATIONS.get(key) ?? match;
+  });
 }

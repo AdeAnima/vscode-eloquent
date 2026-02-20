@@ -168,9 +168,11 @@ vscode-eloquent/
 ├── vitest.config.ts          # test/**/*.test.ts, vscode mock alias
 ├── vscode.proposed.speech.d.ts  # Proposed speech API types
 ├── src/
-│   ├── extension.ts          # Entry point: activation, 7 commands, status bar, walkthrough trigger
+│   ├── extension.ts          # Entry point: activation, config change handler, first-run flow (thin wiring layer)
 │   ├── speechProvider.ts     # EloquentProvider + StreamingTextToSpeechSession
 │   ├── chunker.ts            # chunkText() + ChunkedSynthesizer (prefetch buffer)
+│   ├── commands.ts           # All command handlers (7 commands) + ExtensionServices interface
+│   ├── statusBar.ts          # StatusBarManager: main toggle bar + pause bar
 │   ├── textPreprocessor.ts   # Markdown → speech-friendly plain text
 │   ├── player.ts             # AudioPlayer: WAV encoding, platform playback, pause/resume
 │   ├── setup.ts              # Backend picker, voice picker, createBackend() factory
@@ -338,7 +340,7 @@ vscode-eloquent/
 
 ## 12. Tests
 
-193 test cases across 16 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
+210 test cases across 16 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`). Overall coverage: **91.65% stmts, 80.95% branches, 89.2% funcs, 93.17% lines**. Coverage thresholds enforced in `vitest.config.ts` (78/68/76/78).
 
 | File | Cases | What's Tested |
 |------|-------|---------------|
@@ -351,9 +353,9 @@ vscode-eloquent/
 | `test/kokoroBackend.test.ts` | 8 | Kokoro backend initialization, synthesis, model loading |
 | `test/customBackend.test.ts` | 7 | Custom HTTP backend, WAV parsing, error handling |
 | `test/wavParser.test.ts` | 8 | WAV header parsing, validation, edge cases |
-| `test/f5PythonBackend.test.ts` | 5 | F5-Python backend, subprocess management |
+| `test/f5PythonBackend.test.ts` | 11 | F5-Python backend: subprocess lifecycle, READY signal, 60s timeout, process error/exit, CLI args |
 | `test/f5PythonIntegration.test.ts` | 6 | F5-Python HTTP integration with test server |
-| `test/installer.test.ts` | 7 | `runCommand`, `ensureKokoroInstalled`, npm detection |
+| `test/installer.test.ts` | 18 | `runCommand`, `ensureKokoroInstalled`, full `ensurePythonEnvironment` flow (download, extract, venv, pip) |
 | `test/extensionIntegration.test.ts` | 17 | Full `activate()`, commands, config change, error handling |
 | `test/statusBar.test.ts` | 9 | Status bar updates, visibility, state transitions |
 | `test/setup.test.ts` | 9 | Backend picker, voice picker, setup flow |
@@ -370,6 +372,7 @@ npm run test:watch   # vitest in watch mode
 
 - **Flaky test**: `f5PythonIntegration.test.ts` "synthesize writes and cleans up temp file" occasionally fails with ENOENT due to a timing race between the HTTP response and `fs.readFileSync`. Needs a small retry or `waitForFile` helper.
 - **`backends/index.ts` removed**: The barrel export file was removed; backends are imported directly. Coverage report no longer lists it.
+- **`sessionIntegration.test.ts` slow**: Tests take ~3.7s due to real 900ms timer delays in session lifecycle tests. Could be faster with fake timers but works reliably.
 
 ### Resolved Design Decisions
 
@@ -382,6 +385,7 @@ npm run test:watch   # vitest in watch mode
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1.0-beta.1 | 2026-02-20 | Renamed from "F5 Speech" to "Eloquent". All prefixes `f5Speech.*` → `eloquent.*`. Added README, CHANGELOG, LICENSE. |
+| 0.1.0-beta.2 | 2026-02-20 | Coverage thresholds, extracted backend config interfaces to types.ts, removed dead backends/index.ts, fixed .vscodeignore. |
 | 0.1.0 | 2026-02-20 | Initial implementation: multi-backend TTS (Kokoro, F5-Python, Custom), sentence-level streaming, Markdown preprocessor, cross-platform playback, setup wizard, walkthrough, keybindings. |
 
 ---
@@ -407,135 +411,38 @@ Planned code-health and scalability improvements, mapped to roadmap phases.
 | A1 | **Extract `extension.ts` modules** — Move command handlers to `src/commands.ts`, status bar to `src/statusBar.ts`. Keep extension.ts as thin wiring layer. | ✅ Done | extension.ts reduced from ~330 lines to ~113 lines. Commands in `commands.ts` (272 lines, 92% covered). Status bar in `statusBar.ts` (71 lines, 100% covered). |
 | A2 | **Add `onDidChangeConfiguration` handler** — React to setting changes at runtime without requiring reload. | ✅ Done | Handler reacts to `eloquent.enabled` toggle and backend settings (voice, kokoroDtype, serverPort, etc.) that require re-initialization. |
 | A3 | **Structured logging via `LogOutputChannel`** — Use `createOutputChannel(name, { log: true })` with `.info()`, `.warn()`, `.error()`. | ✅ Done | All `appendLine()` calls replaced with appropriate log levels. `ExtensionServices.outputChannel` typed as `LogOutputChannel`. |
-| A4 | **`installer.ts` test coverage** — Cover `ensurePythonEnvironment()` (34% → target >80%). | ✅ Done | 11 new tests covering full flow: download, extract, venv, pip install, early-return, error propagation, platform gate. 18 total installer tests. |
-| A5 | **`f5python.ts` test coverage** — Cover subprocess lifecycle and error paths (57% → target >80%). | ✅ Done | 6 new tests covering startServer lifecycle: READY signal, 60s timeout, process error, exit handler, CLI args with/without optional params. 11 total f5python tests. |
+| A4 | **`installer.ts` test coverage** — Cover `ensurePythonEnvironment()` (34% → target >80%). | ✅ Done | 11 new tests covering full flow: download, extract, venv, pip install, early-return, error propagation, platform gate. 18 total installer tests. 93.61% stmts. |
+| A5 | **`f5python.ts` test coverage** — Cover subprocess lifecycle and error paths (57% → target >80%). | ✅ Done | 6 new tests covering startServer lifecycle: READY signal, 60s timeout, process error, exit handler, CLI args with/without optional params. 11 total f5python tests. 95.16% stmts. |
 
 ---
 
-##### A4: `installer.ts` Test Coverage Plan
+##### Remaining Coverage Gaps (by priority)
 
-**Current state**: 34% statements. `runCommand()` and `ensureKokoroInstalled()` are tested. `ensurePythonEnvironment()` (lines 79–170) is completely untested — it downloads a standalone Python runtime, extracts it, creates a venv, and pip-installs `f5-tts-mlx`.
+Coverage report from `npx vitest run --coverage` (2026-02-20). All Phase 1 targets achieved. Below are the remaining gaps for future work.
 
-**Goal**: >80% statement coverage without hitting the network.
+| File | Stmts | Branches | Uncovered Lines | What's Missing |
+|------|-------|----------|-----------------|----------------|
+| `setup.ts` | 74.41% | 78.94% | 100–123, 169 | `promptCustomEndpoint()` (showInputBox + URL validation), `runSetupWizard()` full flow (pick backend → save config → createBackend) |
+| `kokoro.ts` | 75% | 90% | 19–23 | `initialize()` body: `ensureKokoroInstalled()` call + dynamic `import("kokoro-js")` + `KokoroTTS.from_pretrained()`. Requires mocking ESM dynamic import. |
+| `custom.ts` | 84.21% | 66.66% | 31, 43–44, 88–89 | HTTPS client selection branch (line 31: `url.protocol === "https:" ? https : http`), health check non-200 rejection (43–44), synthesis `req.on("timeout")` handler (88–89) |
+| `player.ts` | 85% | 63.63% | 98–99, 108–111 | Windows PowerShell playback branch (lines 108–111: `powershell -c (New-Object Media.SoundPlayer ...)`), Linux `aplay` branch (lines 98–99) |
+| `chunker.ts` | 90.12% | 78.94% | 98–99, 130, 145 | `ChunkedSynthesizer` edge cases: producer `waitForSpace` backpressure (line 98–99), `flushed && emittedUpTo >= chunks.length` early return (line 145), 80ms poll sleep (line 130) |
+| `commands.ts` | 91.74% | 77.77% | 28–34, 217–218 | `registerCommands()` subscription push detail (28–34), `readSelectionAloud` no-backend guard (217–218) |
+| `installer.ts` | 93.61% | 79.16% | 83–86 | `getPythonDownloadUrl()` unsupported platform/arch throw. Private function, only testable via `ensurePythonEnvironment()` on unsupported platform. |
+| `extension.ts` | 94.23% | 80.76% | 28, 32 | Minor wiring: output channel creation (28), walkthrough timer scheduling (32). Low value to test. |
+| `f5python.ts` | 95.16% | 88.88% | 142–143 | `requestSynthesis` HTTP `req.on("timeout")` handler. Needs a non-responding test server + fake timers for the 120s timeout. |
 
-**Mocking strategy**:
-- `child_process.execFile` — already indirectly mocked via `runCommand()` tests. For `ensurePythonEnvironment`, mock at the `fs` + `child_process` level.
-- `fs.existsSync` — controls early-return (venv exists) and download-skip (standalone exists) branches.
-- `fs.mkdirSync`, `fs.unlinkSync` — verify directory creation and archive cleanup.
-- `vscode.window.withProgress` — already in the shared mock; verify `progress.report()` messages.
-
-**Challenge**: `ensurePythonEnvironment` calls `runCommand()` from the same module. Options:
-1. **Mock `child_process.execFile` directly** (preferred) — tests the full flow including `runCommand()` internals. Simulate curl, tar, python -m venv, and pip install responses. ✅
-2. **Restructure to inject `runCommand`** — cleaner but requires production code changes.
-
-**Test cases** (~8–10 tests in `test/installer.test.ts`):
-
-| # | Test | Covers |
-|---|------|--------|
-| 1 | Returns early if `venvPython` already exists | Early-return guard (line 92) |
-| 2 | Throws on macOS Intel (non-arm64) | Platform gate (lines 94–97) |
-| 3 | Downloads Python when standalone missing | curl call with correct URL, archive path (lines 102–112) |
-| 4 | Extracts tarball and cleans up archive | tar call + `fs.unlinkSync` (lines 114–123) |
-| 5 | Skips download if standalone already exists | `fs.existsSync(standaloneBin)` true branch (line 101) |
-| 6 | Creates venv from standalone Python | `python3 -m venv` call (lines 126–127) |
-| 7 | Installs f5-tts-mlx via pip with 30min timeout | pip install call + timeout option (lines 130–133) |
-| 8 | Returns venv python path on success | Return value check (line 136) |
-| 9 | Propagates curl download errors | curl failure → rejection |
-| 10 | Propagates pip install errors | pip failure → rejection |
-| 11 | Reports correct progress messages | 4 `progress.report()` calls in sequence |
-
-**Mock setup pattern**:
-```typescript
-// Mock fs for file existence checks
-vi.mock("fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("fs")>();
-  return { ...actual, existsSync: vi.fn(), mkdirSync: vi.fn(), unlinkSync: vi.fn() };
-});
-
-// Mock execFile to simulate curl/tar/python/pip
-vi.mock("child_process", () => ({
-  execFile: vi.fn().mockImplementation((cmd, args, opts, cb) => {
-    cb(null, "ok", ""); // success by default
-  }),
-}));
-```
-
-**Platform-specific URL testing**: Verify `getPythonDownloadUrl()` returns correct URL for darwin/arm64, darwin/x86_64 (should throw), linux/x86_64, linux/arm64. Note: this is a private function — test via `ensurePythonEnvironment()` triggering the download path.
-
----
-
-##### A5: `f5python.ts` Test Coverage Plan
-
-**Current state**: 57% statements, 59% branches. HTTP synthesis path tested via `f5PythonIntegration.test.ts`. Untested: `startServer()` subprocess lifecycle (lines 70–113), `requestSynthesis()` timeout path (lines 149–150), ref audio/text/quantization CLI args.
-
-**Goal**: >80% statement coverage.
-
-**Architecture**: `F5PythonBackend` has three layers:
-1. `ensurePython()` → delegates to `installer.ts` (already mockable)
-2. `startServer(pythonPath)` → spawns subprocess, waits for "READY" on stdout
-3. `requestSynthesis(text, outputPath)` → HTTP POST to `127.0.0.1:<port>/synthesize`
-
-Layers 1 and 3 are tested. Layer 2 (`startServer`) is the primary gap.
-
-**Mocking strategy for `startServer()`**:
-- `child_process.spawn` — return a mock `ChildProcess` with controllable `stdout`, `on('exit')`, `on('error')` events.
-- Use `EventEmitter` to simulate stdout data arriving ("READY" signal).
-- Use fake timers (`vi.useFakeTimers()`) to test the 60s startup timeout without waiting.
-
-**Test cases** (~8–10 tests, split across `test/f5PythonBackend.test.ts`):
-
-| # | Test | Covers |
-|---|------|--------|
-| 1 | `initialize()` calls `ensurePython()` then `startServer()` | Full init flow (lines 23–25) |
-| 2 | `startServer` resolves when stdout emits "READY" | Happy path (lines 82–86) |
-| 3 | `startServer` rejects after 60s timeout | Timeout branch (lines 77–79) |
-| 4 | `startServer` rejects on process error | Error event (lines 93–96) |
-| 5 | `startServer` sets `ready=false` on process exit | Exit handler (lines 88–91) |
-| 6 | `startServer` passes ref audio/text/quantization args | CLI arg construction (lines 71–79) |
-| 7 | `requestSynthesis` timeout destroys request | HTTP timeout → `req.destroy()` (lines 149–150) |
-| 8 | `synthesize` cleans up temp file on HTTP error | Finally block (line 50) |
-| 9 | `dispose` during `startServer` clears timeout | Cleanup during init |
-
-**Mock setup pattern for spawn**:
-```typescript
-import { EventEmitter } from "events";
-
-function mockChildProcess() {
-  const stdout = new EventEmitter();
-  const proc = Object.assign(new EventEmitter(), {
-    stdout, stderr: new EventEmitter(),
-    stdin: { write: vi.fn(), end: vi.fn() },
-    kill: vi.fn(), pid: 12345,
-  });
-  return proc;
-}
-
-// In test: emit "READY" to resolve startServer
-const proc = mockChildProcess();
-vi.mocked(spawn).mockReturnValue(proc as any);
-const initPromise = backend.initialize();
-proc.stdout.emit("data", Buffer.from("Server listening... READY\n"));
-await initPromise; // resolves
-```
-
-**Fake timers for timeout test**:
-```typescript
-vi.useFakeTimers();
-const proc = mockChildProcess();
-const initPromise = backend.initialize();
-vi.advanceTimersByTime(60_000); // trigger timeout
-await expect(initPromise).rejects.toThrow("failed to start within 60s");
-vi.useRealTimers();
-```
-
-**HTTP timeout test**: Use the existing real HTTP server pattern from `f5PythonIntegration.test.ts` but add a server handler that never responds, then verify the 120s timeout fires (with fake timers).
+**Recommended next targets** (best ROI):
+1. **`setup.ts`** (~74% → 90%+): Test `runSetupWizard` end-to-end by mocking `showQuickPick` to return a backend choice, then verify `config.update` is called and `createBackend` returns the expected type. Test `promptCustomEndpoint` by mocking `showInputBox`.
+2. **`kokoro.ts`** (~75% → 90%+): Mock `ensureKokoroInstalled` and the dynamic `import("kokoro-js")` to test `initialize()`. The challenge is mocking ESM dynamic imports in vitest — use `vi.mock("kokoro-js", ...)` with a factory.
+3. **`custom.ts`** (~84% → 95%+): Add HTTPS health check test (mock `https.get`), non-200 status test, and synthesis timeout test (non-responding server).
 
 #### Phase 2 — Multi-Voice & Agent Identity
 
 | ID | Improvement | Rationale |
 |----|------------|----------|
-| B1 | **Backend config objects** — Replace raw constructor primitives with typed config interfaces (`KokoroConfig`, `F5Config`, `CustomConfig`). | Reduces parameter coupling, makes adding new config fields safe and self-documenting. |
-| B2 | **Dependency injection for extension state** — Replace module-level `let` variables with a context/service object passed through the call chain. | Enables testability of extension.ts logic, removes hidden global state. Prerequisite for multi-session (each session needs its own state). |
+| B1 | **Backend config objects** — Replace raw constructor primitives with typed config interfaces (`KokoroConfig`, `F5Config`, `CustomConfig`). | ✅ Done | `KokoroConfig`, `F5Config`, `CustomConfig` in types.ts. All backends and `createBackend()` use config objects. |
+| B2 | **Dependency injection for extension state** — Replace module-level `let` variables with a context/service object passed through the call chain. | ✅ Done | `ExtensionServices` interface owns all mutable state. Single module-level `let services` in extension.ts required by VS Code `deactivate()` lifecycle. |
 
 #### Phase 3 — Audio Pipeline & Scaling
 
@@ -553,3 +460,66 @@ vi.useRealTimers();
 3. **F5-TTS backend maturity**: python-build-standalone download + venv setup is complex and untested on all platforms. Needs end-to-end validation.
 4. **Custom backend protocol**: Should we document a formal API spec for the custom backend so third parties can implement compatible servers?
 5. **Speed control on Linux**: `aplay` doesn't support playback speed adjustment. Need a different player or audio resampling.
+
+---
+
+## 17. Handover: State & Next Steps (2026-02-20)
+
+### What Was Done
+
+Multi-session testing initiative taking the project from 15.2% to **91.65% statement coverage** (210 tests, 16 files, all green). Key deliverables:
+
+| Deliverable | Commit | Impact |
+|-------------|--------|--------|
+| Extract extension.ts → commands.ts + statusBar.ts | `37020e3` | extension.ts ~330→113 lines; commands.ts 92% covered, statusBar.ts 100% |
+| onDidChangeConfiguration handler | `c621bad` | Runtime setting changes without reload |
+| Structured logging (LogOutputChannel) | `c621bad` | `.info()`, `.warn()`, `.error()` with log levels |
+| installer.ts test coverage 34%→93.61% | `1bd0109` | 18 tests: full ensurePythonEnvironment flow |
+| f5python.ts test coverage 57%→95.16% | `1bd0109` | 11 tests: startServer lifecycle, CLI args, abort |
+| Backend config interfaces (KokoroConfig, F5Config, CustomConfig) | `3add491` | Typed config objects in types.ts |
+| ExtensionServices dependency injection | Part of A1 | Testable state management, no hidden globals |
+| Coverage thresholds in vitest.config.ts | `755112f` | CI enforces 78/68/76/78 minimums |
+
+### What's Working
+
+- **All 210 tests pass** — `npm test` green, `npm run build` clean, `npm run typecheck` clean
+- **CI pipeline**: GitHub Actions runs tests on Node 20+22, typecheck on Node 22
+- **Release pipeline**: `v*` tags trigger test → build → vsce package → GitHub Release
+- **All Phase 1 (A1–A5) and Phase 2 (B1–B2) improvements complete**
+- **Coverage well above thresholds**: 91.65% stmts (threshold 78%), 80.95% branches (68%), 89.2% funcs (76%), 93.17% lines (78%)
+
+### Recommended Next Steps (priority order)
+
+#### 1. Close Remaining Coverage Gaps (~2–3h)
+
+Three files are below 85% and have clear test strategies (see "Remaining Coverage Gaps" table above):
+
+- **`setup.ts` (74.41%)**: Mock `showQuickPick` to return backend choice, mock `showInputBox` for custom endpoint URL. Test `runSetupWizard()` end-to-end: pick backend → verify `config.update("backend", ...)` → verify `createBackend()` returns correct type.
+- **`kokoro.ts` (75%)**: Mock `ensureKokoroInstalled` (already done in other tests) + mock dynamic `import("kokoro-js")` via `vi.mock("kokoro-js", ...)`. Test `initialize()` calls `from_pretrained` with correct dtype/device.
+- **`custom.ts` (84.21%)**: Add HTTPS branch test (mock `https.get`), non-200 health check test, synthesis timeout test. Can reuse the real HTTP server pattern from `f5PythonIntegration.test.ts`.
+
+#### 2. Fix the Flaky f5PythonIntegration Test
+
+"synthesize writes and cleans up temp file" occasionally fails with ENOENT due to a race between the HTTP response and `fs.readFileSync`. Fix: add a small `waitForFile()` helper that polls with `fs.existsSync` before reading, or use `fs.promises.access` with a retry loop.
+
+#### 3. Raise Coverage Thresholds
+
+Once gaps are closed, bump thresholds in `vitest.config.ts` to lock in the gains:
+```typescript
+statements: 88,   // from 78
+branches: 78,     // from 68
+functions: 86,    // from 76
+lines: 90,        // from 78
+```
+
+#### 4. Feature Work: Phase 3 (Audio Pipeline)
+
+- **C1 — Audio playback modernization**: Current `afplay`/`aplay` approach can't support overlapping multi-agent voices. Investigate `node-speaker`, `web-audio-api`, or direct PCM streaming.
+- **C2 — Sub-sentence streaming**: Evaluate `kokoro-js` `TextSplitterStream` for lower time-to-first-audio. Current design waits for full sentences (60–135 chars).
+
+#### 5. Feature Work: Multi-Agent Voice
+
+The roadmap vision (Section 15) describes voice-addressed agents with distinct voices. Prerequisites:
+- **Audio queue manager**: Multiple TTS sessions playing concurrently or sequentially
+- **Voice assignment**: Map agent names to voice presets
+- **Session multiplexing**: Multiple `StreamingTextToSpeechSession` instances with independent state

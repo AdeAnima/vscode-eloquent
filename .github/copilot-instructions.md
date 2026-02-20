@@ -7,7 +7,7 @@ VS Code extension that replaces the built-in TTS with high-quality speech synthe
 ## Architecture
 
 ### Backend Abstraction (`src/types.ts`)
-All TTS engines implement the `TtsBackend` interface: `initialize()`, `synthesize(text, signal)` (async iterable of `AudioChunk`), `dispose()`. The `ChunkedSynthesizer` in `src/chunker.ts` handles sentence-level text splitting and buffered streaming for all backends.
+All TTS engines implement the `TtsBackend` interface: `initialize()`, `synthesize(text, signal)` (async iterable of `AudioChunk`), `dispose()`. **Chunking is owned by callers** — the `ChunkedSynthesizer` in `src/chunker.ts` handles sentence-level text splitting and buffered streaming; backends receive pre-chunked text segments.
 
 ### Backends
 - **Kokoro** (`src/backends/kokoro.ts`): Default. 82M-param ONNX model via `kokoro-js` npm. Runs in-process on Node.js. No Python. 50+ preset voices.
@@ -34,7 +34,7 @@ Key files: [BRIEFING.md](../BRIEFING.md) has full architecture details.
 ```bash
 npm install          # Node dependencies
 npm run build        # esbuild bundle → out/extension.js
-npm test             # vitest (~133 tests)
+npm test             # vitest (~125 tests)
 npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
 npm run fetch-types  # update proposed API types (npx @vscode/dts dev)

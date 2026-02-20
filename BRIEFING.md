@@ -119,7 +119,7 @@ enum TextToSpeechStatus { Started = 1, Stopped = 2, Error = 3 }
 2. **Accumulation**: `ChunkedSynthesizer.push(text)` buffers incoming text
 3. **Sentence splitting**: `chunkText()` splits at sentence boundaries (`.!?;:\n`), first chunk capped at 60 chars for low latency, subsequent chunks up to 135 chars
 4. **Prefetch buffer**: Producer synthesizes chunks ahead (configurable `prefetchBufferSize`, default 2), consumer yields `AudioChunk`s with backpressure
-5. **Backend synthesis**: Each chunk sent to the active `TtsBackend.synthesize()`, which returns `AsyncIterable<AudioChunk>` (Float32Array PCM @ 24 kHz mono)
+5. **Backend synthesis**: Each pre-chunked segment sent to `TtsBackend.synthesize()`, which returns `AsyncIterable<AudioChunk>` (Float32Array PCM @ 24 kHz mono). Backends do **not** chunk internally — chunking is owned by the caller (`ChunkedSynthesizer` for streaming, `chunkText()` for read-aloud).
 6. **Playback**: `AudioPlayer` writes each chunk to a temp WAV file, plays via platform command (`afplay -r <speed>` on macOS, `aplay -q` on Linux, PowerShell on Windows)
 7. **Cancellation**: `AbortSignal` propagates through the entire pipeline — cancels generation and playback mid-stream
 
@@ -145,9 +145,9 @@ interface AudioChunk {
 
 | Backend | Runtime | Model Loading | Synthesis | Dependencies |
 |---------|---------|--------------|-----------|--------------|
-| **Kokoro** | In-process Node.js | Dynamic `import("kokoro-js")` → `KokoroTTS.from_pretrained()` | `chunkText()` → `tts.generate()` per chunk | `kokoro-js` + `onnxruntime-node` (installed at runtime by `installer.ts`) |
-| **F5-Python** | Subprocess | `ensurePythonEnvironment()` downloads python-build-standalone + pip installs `f5-tts-mlx` → spawns `tts_server.py` | `chunkText()` → HTTP POST `/synthesize` per chunk → parse WAV response | python-build-standalone (auto-downloaded) |
-| **Custom** | External server | Health check GET `/health` | `chunkText()` → HTTP POST `/synthesize` with JSON `{ text }` → parse WAV response | User-provided HTTP server |
+| **Kokoro** | In-process Node.js | Dynamic `import("kokoro-js")` → `KokoroTTS.from_pretrained()` | `tts.generate(text)` per pre-chunked segment | `kokoro-js` + `onnxruntime-node` (installed at runtime by `installer.ts`) |
+| **F5-Python** | Subprocess | `ensurePythonEnvironment()` downloads python-build-standalone + pip installs `f5-tts-mlx` → spawns `tts_server.py` | HTTP POST `/synthesize` per pre-chunked segment → parse WAV response | python-build-standalone (auto-downloaded) |
+| **Custom** | External server | Health check GET `/health` | HTTP POST `/synthesize` with JSON `{ text }` per pre-chunked segment → parse WAV response | User-provided HTTP server |
 
 ### Session Lifecycle
 
@@ -176,6 +176,7 @@ vscode-eloquent/
 │   ├── setup.ts              # Backend picker, voice picker, createBackend() factory
 │   ├── installer.ts          # Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
 │   ├── types.ts              # TtsBackend, AudioChunk, BackendId, BACKENDS
+│   ├── wavParser.ts          # Shared WAV parsing utility
 │   ├── kokoro-js.d.ts        # Type declarations for kokoro-js npm package
 │   └── backends/
 │       ├── kokoro.ts         # KokoroBackend: in-process ONNX inference
@@ -194,7 +195,6 @@ vscode-eloquent/
 │   ├── kokoroBackend.test.ts      # 8 tests: Kokoro backend
 │   ├── customBackend.test.ts      # 7 tests: Custom HTTP backend
 │   ├── wavParser.test.ts          # 8 tests: WAV parsing
-│   ├── server.test.ts             # 8 tests: F5-TTS server
 │   ├── f5PythonBackend.test.ts    # 5 tests: F5-Python backend
 │   ├── setup.test.ts              # 9 tests: setup flow
 │   └── __mocks__/vscode.ts        # VS Code mock with EventEmitter, CancellationToken
@@ -334,7 +334,7 @@ vscode-eloquent/
 
 ## 12. Tests
 
-133 test cases across 12 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
+125 test cases across 11 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
 
 | File | Cases | What's Tested |
 |------|-------|---------------|
@@ -347,7 +347,6 @@ vscode-eloquent/
 | `test/kokoroBackend.test.ts` | 8 | Kokoro backend initialization, synthesis, model loading |
 | `test/customBackend.test.ts` | 7 | Custom HTTP backend, WAV parsing, error handling |
 | `test/wavParser.test.ts` | 8 | WAV header parsing, validation, edge cases |
-| `test/server.test.ts` | 8 | F5-TTS server lifecycle, health checks |
 | `test/f5PythonBackend.test.ts` | 5 | F5-Python backend, subprocess management |
 | `test/setup.test.ts` | 9 | Backend picker, voice picker, setup flow |
 
@@ -382,6 +381,32 @@ Eloquent starts as a TTS replacement, but the long-term goal is a **voice-first 
 - **Raise-hand protocol** — Agents needing input surface to attention; acknowledged by name
 - **Distinct agent voices** — Each agent gets a unique voice preset for auditory identification
 - **Conversational control flow** — Natural phrases to delegate, prioritize, pause, or reassign work
+
+### Architecture Improvements Plan
+
+Planned code-health and scalability improvements, mapped to roadmap phases.
+
+#### Phase 1 — Stabilize (current)
+
+| ID | Improvement | Rationale |
+|----|------------|----------|
+| A1 | **Extract `extension.ts` modules** — Move command handlers to `src/commands.ts`, status bar to `src/statusBar.ts`. Keep extension.ts as thin wiring layer. | extension.ts mixes 6+ concerns (activation, commands, status bar, backend lifecycle, UI, read-aloud). Extracting improves testability and readability. |
+| A2 | **Add `onDidChangeConfiguration` handler** — React to setting changes (backend, voice, speed) at runtime without requiring reload. | Currently settings only take effect on restart or re-running setup. |
+| A3 | **Structured logging via `LogOutputChannel`** — Replace `vscode.window.createOutputChannel()` with `createOutputChannel(name, { log: true })`. Use `.info()`, `.warn()`, `.error()`. | Enables VS Code's built-in log filtering. Preparation for multi-agent debugging. |
+
+#### Phase 2 — Multi-Voice & Agent Identity
+
+| ID | Improvement | Rationale |
+|----|------------|----------|
+| B1 | **Backend config objects** — Replace raw constructor primitives with typed config interfaces (`KokoroConfig`, `F5Config`, `CustomConfig`). | Reduces parameter coupling, makes adding new config fields safe and self-documenting. |
+| B2 | **Dependency injection for extension state** — Replace module-level `let` variables with a context/service object passed through the call chain. | Enables testability of extension.ts logic, removes hidden global state. Prerequisite for multi-session (each session needs its own state). |
+
+#### Phase 3 — Audio Pipeline & Scaling
+
+| ID | Improvement | Rationale |
+|----|------------|----------|
+| C1 | **Audio playback modernization** — Replace temp-file + platform-command approach with a Node.js audio library or VS Code audio API (if available). | Current approach won't scale for overlapping multi-agent voices, cannot control volume, and has no queue management. |
+| C2 | **Investigate kokoro-js `TextSplitterStream`** — Evaluate for sub-sentence streaming to reduce time-to-first-audio. | Current design waits for full sentences. Sub-sentence streaming could improve perceived latency. |
 
 ---
 

@@ -9,7 +9,7 @@ VS Code extension replacing built-in TTS with high-quality local speech synthesi
 ```bash
 npm install          # install dependencies
 npm run build        # esbuild → out/extension.js
-npm test             # vitest (133 tests)
+npm test             # vitest (125 tests)
 npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
 ```
@@ -55,13 +55,14 @@ Run `npm test` before every commit. Run `npm run build && npm run typecheck` bef
 ## Architecture
 
 - `src/types.ts` — `TtsBackend` interface, `BackendId`, `AudioChunk`, `BACKENDS` const
-- `src/chunker.ts` — `chunkText()` sentence splitting + `ChunkedSynthesizer` prefetch buffer
+- `src/chunker.ts` — `chunkText()` sentence splitting + `ChunkedSynthesizer` prefetch buffer. **Chunking is owned by callers** (`ChunkedSynthesizer` for streaming, `chunkText()` for read-aloud) — backends receive pre-chunked text.
 - `src/textPreprocessor.ts` — Markdown → speech-friendly plain text (code blocks, tables, links, etc.)
 - `src/player.ts` — Platform-native audio playback with pause/resume (SIGSTOP/SIGCONT)
 - `src/speechProvider.ts` — VS Code `SpeechProvider` + `StreamingTextToSpeechSession` (configurable `initialBatchDelay`)
 - `src/extension.ts` — Entry point, 7 commands, status bar, walkthrough trigger
 - `src/setup.ts` — Backend picker, voice picker (28 Kokoro voices), `createBackend()` factory
 - `src/installer.ts` — Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
+- `src/wavParser.ts` — Shared WAV parsing utility (used by F5-Python and Custom backends)
 - `src/kokoro-js.d.ts` — Type declarations for kokoro-js npm package
 - `src/backends/kokoro.ts` — Kokoro ONNX backend (in-process Node.js)
 - `src/backends/f5python.ts` — F5-TTS via auto-installed Python subprocess
@@ -80,7 +81,6 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 - `test/kokoroBackend.test.ts` — Kokoro backend initialization, synthesis
 - `test/customBackend.test.ts` — Custom HTTP backend, WAV parsing
 - `test/wavParser.test.ts` — WAV header parsing, validation
-- `test/server.test.ts` — F5-TTS server lifecycle
 - `test/f5PythonBackend.test.ts` — F5-Python backend, subprocess management
 - `test/setup.test.ts` — Backend picker, voice picker, setup flow
 

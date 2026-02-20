@@ -1,0 +1,89 @@
+{
+  "name": "vscode-f5-speech",
+  "displayName": "F5 Speech — High-Quality TTS for Copilot",
+  "description": "Replaces the default VS Code text-to-speech with F5-TTS-MLX for natural-sounding voice output in Copilot Chat.",
+  "version": "0.1.0",
+  "publisher": "adeanima",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "enabledApiProposals": [
+    "speech"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "f5Speech.startServer",
+        "title": "F5 Speech: Start TTS Server"
+      },
+      {
+        "command": "f5Speech.stopServer",
+        "title": "F5 Speech: Stop TTS Server"
+      },
+      {
+        "command": "f5Speech.readAloud",
+        "title": "F5 Speech: Read Selection Aloud"
+      }
+    ],
+    "configuration": {
+      "title": "F5 Speech",
+      "properties": {
+        "f5Speech.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to the Python interpreter with f5-tts-mlx installed."
+        },
+        "f5Speech.serverPort": {
+          "type": "number",
+          "default": 18230,
+          "description": "Port for the local F5-TTS server."
+        },
+        "f5Speech.refAudioPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a reference audio file (mono, 24kHz WAV, 5-10s) for voice cloning. Leave empty for default voice."
+        },
+        "f5Speech.refText": {
+          "type": "string",
+          "default": "",
+          "description": "Transcript of the reference audio for voice cloning."
+        },
+        "f5Speech.quantization": {
+          "type": "string",
+          "enum": [
+            "none",
+            "4",
+            "8"
+          ],
+          "default": "none",
+          "description": "Model quantization level (4-bit or 8-bit) for lower memory usage."
+        },
+        "f5Speech.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the TTS server when VS Code launches."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package",
+    "fetch-types": "npx @vscode/dts dev"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vscode/dts": "^0.4.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

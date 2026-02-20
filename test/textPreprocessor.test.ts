@@ -190,6 +190,15 @@ describe("preprocessForSpeech", () => {
       const input = "| Col A | Col B |\n| --- | --- |\n";
       expect(preprocessForSpeech(input)).toBe("Col A, Col B.");
     });
+
+    it("handles single-row table", () => {
+      const input = [
+        "| Key | Value |",
+        "| --- | --- |",
+        "| foo | bar |",
+      ].join("\n");
+      expect(preprocessForSpeech(input)).toBe("Key: foo, Value: bar.");
+    });
   });
 
   // --- Whitespace ---

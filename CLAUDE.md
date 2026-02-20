@@ -54,15 +54,18 @@ Run `npm test` before every commit. Run `npm run build && npm run typecheck` bef
 
 ## Architecture
 
-- `src/types.ts` — `TtsBackend` interface, `BackendId`, `AudioChunk`
+- `src/types.ts` — `TtsBackend` interface, `BackendId`, `AudioChunk`, `BACKENDS` const
 - `src/chunker.ts` — `chunkText()` sentence splitting + `ChunkedSynthesizer` prefetch buffer
-- `src/textPreprocessor.ts` — Markdown → speech-friendly plain text
+- `src/textPreprocessor.ts` — Markdown → speech-friendly plain text (code blocks, tables, links, etc.)
 - `src/player.ts` — Platform-native audio playback with pause/resume (SIGSTOP/SIGCONT)
-- `src/speechProvider.ts` — VS Code `SpeechProvider` implementation
-- `src/extension.ts` — Entry point, commands, activation
-- `src/setup.ts` — Backend/voice picker wizard
-- `src/backends/kokoro.ts` — Kokoro ONNX backend
-- `src/backends/f5python.ts` — F5-TTS via auto-installed Python
+- `src/speechProvider.ts` — VS Code `SpeechProvider` + `StreamingTextToSpeechSession` (150ms initial batching)
+- `src/extension.ts` — Entry point, 7 commands, status bar, walkthrough trigger
+- `src/setup.ts` — Backend picker, voice picker (28 Kokoro voices), `createBackend()` factory
+- `src/installer.ts` — Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
+- `src/server.ts` — ⚠️ Legacy TtsServerManager (dead code, not imported anywhere)
+- `src/kokoro-js.d.ts` — Type declarations for kokoro-js npm package
+- `src/backends/kokoro.ts` — Kokoro ONNX backend (in-process Node.js)
+- `src/backends/f5python.ts` — F5-TTS via auto-installed Python subprocess
 - `src/backends/custom.ts` — HTTP endpoint backend
 
 ## Test Structure
@@ -85,3 +88,4 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 
 - `.github/workflows/ci.yml` — Runs on push/PR to main: tests (Node 20+22), build, typecheck
 - `.github/workflows/release.yml` — Triggered on `v*` tags: tests, build, vsce package, GitHub Release
+- ⚠️ Release workflow still produces `f5-speech-*.vsix` (naming not updated to `eloquent`)

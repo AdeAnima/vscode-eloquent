@@ -15,24 +15,32 @@ All TTS engines implement the `TtsBackend` interface: `initialize()`, `synthesiz
 - **Custom** (`src/backends/custom.ts`): Bring-your-own HTTP TTS server (`POST /synthesize`).
 
 ### Setup Flow (`src/setup.ts`)
-First install shows a quick-pick to choose backend + voice. Re-triggerable via `Eloquent: Choose TTS Backend` command. Backend choice persisted in `eloquent.backend` setting.
+First install shows walkthrough, then quick-pick to choose backend + voice. Re-triggerable via `Eloquent: Choose TTS Backend` command. Backend choice persisted in `eloquent.backend` setting.
 
 ### Streaming Design
-Text from `synthesize()` calls accumulates in a `ChunkedSynthesizer`. Text is split at sentence boundaries (`.!?;\n`), each chunk synthesized independently. Audio plays as soon as each chunk is ready. `AbortSignal` cancels both generation and playback mid-stream.
+Text from `synthesize()` calls accumulates in a `ChunkedSynthesizer`. Text is split at sentence boundaries (`.!?;:\n`), first chunk capped at 60 chars for low latency, subsequent chunks up to 135 chars. Producer-consumer pattern with configurable prefetch buffer (default 2 chunks ahead). Audio plays as soon as each chunk is ready. `AbortSignal` cancels both generation and playback mid-stream.
+
+### Text Preprocessing (`src/textPreprocessor.ts`)
+`preprocessForSpeech()` converts Markdown to speech-friendly plain text: code blocks, links, headings, formatting, tables, HTML entities, and bare URLs are all transformed to natural language.
+
+### Auto-Installation (`src/installer.ts`)
+- Kokoro: `npm install --no-save kokoro-js` if not present
+- F5-Python: Downloads python-build-standalone, creates venv, pip-installs `f5-tts-mlx`
 
 Key files: [BRIEFING.md](../BRIEFING.md) has full architecture details.
 
 ## Build and Test
 
 ```bash
-npm install          # Node dependencies (includes kokoro-js for Kokoro backend)
+npm install          # Node dependencies
 npm run build        # esbuild bundle → out/extension.js
+npm test             # vitest (~47 tests)
+npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
-npm test             # vitest
 npm run fetch-types  # update proposed API types (npx @vscode/dts dev)
 ```
 
-Debug: F5 in VS Code launches Extension Development Host (requires VS Code Insiders + proposed API enabled).
+Debug: F5 in VS Code Insiders launches Extension Development Host.
 
 ## Conventions
 
@@ -40,8 +48,10 @@ Debug: F5 in VS Code launches Extension Development Host (requires VS Code Insid
 - **Bundler**: esbuild — `kokoro-js` and `onnxruntime-node` are marked external (native modules)
 - **Proposed API**: Extension uses `vscode.proposed.speech.d.ts` — requires Insiders and `enabledApiProposals: ["speech"]`
 - **No Python dependency for end users**: Kokoro backend is pure Node.js. F5-Python backend auto-downloads standalone Python.
+- **Zero runtime deps in package.json**: `kokoro-js` and `onnxruntime-node` are installed at runtime by `installer.ts`, not listed as dependencies
 - **TTS output instructions**: See `.github/instructions/tts-voice-output.instructions.md` for rules that make Copilot output sound natural when spoken aloud
 - **Platform playback**: `afplay` (macOS), `aplay` (Linux), PowerShell (Windows) — see `src/player.ts`
+- **Commit discipline**: Small, focused commits; always update tests in the same commit. See CLAUDE.md for the test-then-commit cycle.
 
 ## Key Constraints
 
@@ -49,3 +59,10 @@ Debug: F5 in VS Code launches Extension Development Host (requires VS Code Insid
 - Distribute as `.vsix` file (build with `npm run package`)
 - Model weights downloaded on first activation (~80 MB for Kokoro q8, ~400 MB for F5-TTS 8-bit)
 - Voice cloning only available with F5-TTS backend (preset voices for Kokoro)
+
+## Known Issues
+
+- `src/server.ts` is dead code (legacy pre-refactor server manager) — not imported anywhere
+- WAV parser is duplicated in `src/backends/f5python.ts` and `src/backends/custom.ts`
+- `release.yml` produces `f5-speech-*.vsix` instead of `eloquent-*.vsix`
+- `PROJECT.md` is outdated (uses old `f5Speech.*` prefix)

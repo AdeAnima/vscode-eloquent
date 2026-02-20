@@ -57,6 +57,14 @@ describe("chunkText", () => {
     expect(chunks.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("splits on colons", () => {
+    const input =
+      "Note: this is important. Warning: do not ignore.";
+    const chunks = chunkText(input, 135, 20);
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    expect(chunks.join(" ")).toBe(input);
+  });
+
   it("splits on newlines", () => {
     const input = "Line one.\nLine two.\nLine three.";
     const chunks = chunkText(input, 135, 60);

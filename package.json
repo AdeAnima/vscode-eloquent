@@ -217,6 +217,7 @@
     "watch": "node esbuild.config.mjs --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "package": "vsce package",
     "fetch-types": "npx @vscode/dts dev"
@@ -224,6 +225,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.109.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "@vscode/dts": "^0.4.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.0",

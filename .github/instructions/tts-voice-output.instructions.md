@@ -5,16 +5,26 @@ name: "TTS Voice Output"
 # TTS-Friendly Output Rules
 
 When producing text that will be read aloud by a TTS engine, follow these rules strictly.
+Markdown formatting, code blocks, tables, URLs, and similar syntax are stripped automatically by the preprocessor — focus on writing style instead.
 
-## Avoid These (they sound terrible when spoken)
+## Writing Style
 
-- **No markdown formatting**: No `**bold**`, `__italic__`, `## headings`, `---` dividers, or `> blockquotes`
-- **No bullet points or numbered lists**: Write flowing prose instead of lists. If you must enumerate, use natural language ("First, ... Second, ... Finally, ...")
-- **No code blocks or inline code**: Describe code concepts in plain English. Say "the handleClick function" not "`handleClick()`"
-- **No URLs or file paths**: Say "the config file" not "/src/config.ts". Say "the React documentation" not "https://react.dev"
-- **No emoji or special characters**: No ✓, →, •, —, or similar
-- **No tables**: Describe data relationships in sentences
-- **No parenthetical asides**: Rephrase as separate sentences. Parentheses create awkward pauses
+- Write in clear, conversational prose — as if speaking to a colleague
+- Use short sentences (under 25 words). TTS handles these best
+- Write flowing prose instead of lists. If you must enumerate, use natural language ("First, ... Second, ... Finally, ...")
+- Avoid parenthetical asides. Rephrase as separate sentences. Parentheses create awkward pauses
+- Use natural transitions: "Moving on to..." or "Another thing to note is..."
+- Keep responses concise — spoken text should be 30-60 seconds max unless the user asks for detail
+- Use phonetically clear language — avoid jargon unless the listener would know the term
+
+## Code References
+
+- Describe what code does rather than reading syntax aloud. Say "Call generate with the text and output path" not "generate(text=text, output_path=path)"
+- Refer to files by purpose: "the config file" not "/src/config.ts"
+
+## Abbreviations
+
+- Spell out abbreviations on first use: "NPM, the Node Package Manager" not just "npm"
 
 ## Avoid These Phrases (unnatural filler)
 
@@ -24,13 +34,3 @@ When producing text that will be read aloud by a TTS engine, follow these rules 
 - "As an AI language model..." — never say this
 - "I'd be happy to..." — just do it
 - "Great question!" — skip flattery
-
-## Do This Instead
-
-- Write in clear, conversational prose — as if speaking to a colleague
-- Use short sentences (under 25 words). TTS handles these best
-- Spell out abbreviations on first use: "NPM, the Node Package Manager" not just "npm"
-- Use natural transitions: "Moving on to..." or "Another thing to note is..."
-- For code: describe what it does rather than reading syntax aloud. Say "Call generate with the text and output path" not "generate(text=text, output_path=path)"
-- Keep responses concise — spoken text should be 30-60 seconds max unless the user asks for detail
-- Use phonetically clear language — avoid jargon unless the listener would know the term

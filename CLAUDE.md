@@ -59,7 +59,9 @@ Run `npm test` before every commit. Run `npm run build && npm run typecheck` bef
 - `src/textPreprocessor.ts` — Markdown → speech-friendly plain text (code blocks, tables, links, etc.)
 - `src/player.ts` — Platform-native audio playback with pause/resume (SIGSTOP/SIGCONT)
 - `src/speechProvider.ts` — VS Code `SpeechProvider` + `StreamingTextToSpeechSession` (configurable `initialBatchDelay`)
-- `src/extension.ts` — Entry point, 7 commands, status bar, walkthrough trigger
+- `src/extension.ts` — Entry point: activation, config change handler, first-run flow (thin wiring layer)
+- `src/commands.ts` — All command handlers (`registerCommands`, `enableTts`, `disableTts`, `toggleTts`, `readSelectionAloud`, etc.) + `ExtensionServices` interface
+- `src/statusBar.ts` — `StatusBarManager`: main toggle bar + pause bar
 - `src/setup.ts` — Backend picker, voice picker (28 Kokoro voices), `createBackend()` factory
 - `src/installer.ts` — Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
 - `src/wavParser.ts` — Shared WAV parsing utility (used by F5-Python and Custom backends)
@@ -84,9 +86,10 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 - `test/f5PythonBackend.test.ts` — F5-Python backend, subprocess management
 - `test/f5PythonIntegration.test.ts` — F5-Python HTTP integration with test server
 - `test/installer.test.ts` — `runCommand`, `ensureKokoroInstalled`, npm detection
-- `test/extensionIntegration.test.ts` — Full `activate()`, command registration, handlers
+- `test/extensionIntegration.test.ts` — Full `activate()`, command registration, config change, error handling
 - `test/statusBar.test.ts` — Status bar updates, visibility, state transitions
 - `test/setup.test.ts` — Backend picker, voice picker, setup flow
+- `test/commands.test.ts` — All command handlers (26 tests)
 
 ## Conventions
 

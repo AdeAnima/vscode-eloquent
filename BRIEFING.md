@@ -338,7 +338,7 @@ vscode-eloquent/
 
 ## 12. Tests
 
-160 test cases across 15 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
+193 test cases across 16 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
 
 | File | Cases | What's Tested |
 |------|-------|---------------|
@@ -354,9 +354,10 @@ vscode-eloquent/
 | `test/f5PythonBackend.test.ts` | 5 | F5-Python backend, subprocess management |
 | `test/f5PythonIntegration.test.ts` | 6 | F5-Python HTTP integration with test server |
 | `test/installer.test.ts` | 7 | `runCommand`, `ensureKokoroInstalled`, npm detection |
-| `test/extensionIntegration.test.ts` | 10 | Full `activate()`, command registration, handlers |
+| `test/extensionIntegration.test.ts` | 17 | Full `activate()`, commands, config change, error handling |
 | `test/statusBar.test.ts` | 9 | Status bar updates, visibility, state transitions |
 | `test/setup.test.ts` | 9 | Backend picker, voice picker, setup flow |
+| `test/commands.test.ts` | 26 | All command handlers, testVoice, setupBackend, toggleTts |
 
 ```bash
 npm test             # vitest run (all tests)
@@ -367,7 +368,8 @@ npm run test:watch   # vitest in watch mode
 
 ## 13. Known Issues & Tech Debt
 
-No known issues at this time.
+- **Flaky test**: `f5PythonIntegration.test.ts` "synthesize writes and cleans up temp file" occasionally fails with ENOENT due to a timing race between the HTTP response and `fs.readFileSync`. Needs a small retry or `waitForFile` helper.
+- **`backends/index.ts` removed**: The barrel export file was removed; backends are imported directly. Coverage report no longer lists it.
 
 ### Resolved Design Decisions
 
@@ -400,11 +402,133 @@ Planned code-health and scalability improvements, mapped to roadmap phases.
 
 #### Phase 1 — Stabilize (current)
 
-| ID | Improvement | Rationale |
-|----|------------|----------|
-| A1 | **Extract `extension.ts` modules** — Move command handlers to `src/commands.ts`, status bar to `src/statusBar.ts`. Keep extension.ts as thin wiring layer. | extension.ts mixes 6+ concerns (activation, commands, status bar, backend lifecycle, UI, read-aloud). Extracting improves testability and readability. |
-| A2 | **Add `onDidChangeConfiguration` handler** — React to setting changes (backend, voice, speed) at runtime without requiring reload. | Currently settings only take effect on restart or re-running setup. |
-| A3 | **Structured logging via `LogOutputChannel`** — Replace `vscode.window.createOutputChannel()` with `createOutputChannel(name, { log: true })`. Use `.info()`, `.warn()`, `.error()`. | Enables VS Code's built-in log filtering. Preparation for multi-agent debugging. |
+| ID | Improvement | Status | Rationale |
+|----|------------|--------|----------|
+| A1 | **Extract `extension.ts` modules** — Move command handlers to `src/commands.ts`, status bar to `src/statusBar.ts`. Keep extension.ts as thin wiring layer. | ✅ Done | extension.ts reduced from ~330 lines to ~113 lines. Commands in `commands.ts` (272 lines, 92% covered). Status bar in `statusBar.ts` (71 lines, 100% covered). |
+| A2 | **Add `onDidChangeConfiguration` handler** — React to setting changes at runtime without requiring reload. | ✅ Done | Handler reacts to `eloquent.enabled` toggle and backend settings (voice, kokoroDtype, serverPort, etc.) that require re-initialization. |
+| A3 | **Structured logging via `LogOutputChannel`** — Use `createOutputChannel(name, { log: true })` with `.info()`, `.warn()`, `.error()`. | ✅ Done | All `appendLine()` calls replaced with appropriate log levels. `ExtensionServices.outputChannel` typed as `LogOutputChannel`. |
+| A4 | **`installer.ts` test coverage** — Cover `ensurePythonEnvironment()` (34% → target >80%). | 🔲 Planned | See [detailed plan below](#a4-installerts-test-coverage-plan). |
+| A5 | **`f5python.ts` test coverage** — Cover subprocess lifecycle and error paths (57% → target >80%). | 🔲 Planned | See [detailed plan below](#a5-f5pythonts-test-coverage-plan). |
+
+---
+
+##### A4: `installer.ts` Test Coverage Plan
+
+**Current state**: 34% statements. `runCommand()` and `ensureKokoroInstalled()` are tested. `ensurePythonEnvironment()` (lines 79–170) is completely untested — it downloads a standalone Python runtime, extracts it, creates a venv, and pip-installs `f5-tts-mlx`.
+
+**Goal**: >80% statement coverage without hitting the network.
+
+**Mocking strategy**:
+- `child_process.execFile` — already indirectly mocked via `runCommand()` tests. For `ensurePythonEnvironment`, mock at the `fs` + `child_process` level.
+- `fs.existsSync` — controls early-return (venv exists) and download-skip (standalone exists) branches.
+- `fs.mkdirSync`, `fs.unlinkSync` — verify directory creation and archive cleanup.
+- `vscode.window.withProgress` — already in the shared mock; verify `progress.report()` messages.
+
+**Challenge**: `ensurePythonEnvironment` calls `runCommand()` from the same module. Options:
+1. **Mock `child_process.execFile` directly** (preferred) — tests the full flow including `runCommand()` internals. Simulate curl, tar, python -m venv, and pip install responses. ✅
+2. **Restructure to inject `runCommand`** — cleaner but requires production code changes.
+
+**Test cases** (~8–10 tests in `test/installer.test.ts`):
+
+| # | Test | Covers |
+|---|------|--------|
+| 1 | Returns early if `venvPython` already exists | Early-return guard (line 92) |
+| 2 | Throws on macOS Intel (non-arm64) | Platform gate (lines 94–97) |
+| 3 | Downloads Python when standalone missing | curl call with correct URL, archive path (lines 102–112) |
+| 4 | Extracts tarball and cleans up archive | tar call + `fs.unlinkSync` (lines 114–123) |
+| 5 | Skips download if standalone already exists | `fs.existsSync(standaloneBin)` true branch (line 101) |
+| 6 | Creates venv from standalone Python | `python3 -m venv` call (lines 126–127) |
+| 7 | Installs f5-tts-mlx via pip with 30min timeout | pip install call + timeout option (lines 130–133) |
+| 8 | Returns venv python path on success | Return value check (line 136) |
+| 9 | Propagates curl download errors | curl failure → rejection |
+| 10 | Propagates pip install errors | pip failure → rejection |
+| 11 | Reports correct progress messages | 4 `progress.report()` calls in sequence |
+
+**Mock setup pattern**:
+```typescript
+// Mock fs for file existence checks
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  return { ...actual, existsSync: vi.fn(), mkdirSync: vi.fn(), unlinkSync: vi.fn() };
+});
+
+// Mock execFile to simulate curl/tar/python/pip
+vi.mock("child_process", () => ({
+  execFile: vi.fn().mockImplementation((cmd, args, opts, cb) => {
+    cb(null, "ok", ""); // success by default
+  }),
+}));
+```
+
+**Platform-specific URL testing**: Verify `getPythonDownloadUrl()` returns correct URL for darwin/arm64, darwin/x86_64 (should throw), linux/x86_64, linux/arm64. Note: this is a private function — test via `ensurePythonEnvironment()` triggering the download path.
+
+---
+
+##### A5: `f5python.ts` Test Coverage Plan
+
+**Current state**: 57% statements, 59% branches. HTTP synthesis path tested via `f5PythonIntegration.test.ts`. Untested: `startServer()` subprocess lifecycle (lines 70–113), `requestSynthesis()` timeout path (lines 149–150), ref audio/text/quantization CLI args.
+
+**Goal**: >80% statement coverage.
+
+**Architecture**: `F5PythonBackend` has three layers:
+1. `ensurePython()` → delegates to `installer.ts` (already mockable)
+2. `startServer(pythonPath)` → spawns subprocess, waits for "READY" on stdout
+3. `requestSynthesis(text, outputPath)` → HTTP POST to `127.0.0.1:<port>/synthesize`
+
+Layers 1 and 3 are tested. Layer 2 (`startServer`) is the primary gap.
+
+**Mocking strategy for `startServer()`**:
+- `child_process.spawn` — return a mock `ChildProcess` with controllable `stdout`, `on('exit')`, `on('error')` events.
+- Use `EventEmitter` to simulate stdout data arriving ("READY" signal).
+- Use fake timers (`vi.useFakeTimers()`) to test the 60s startup timeout without waiting.
+
+**Test cases** (~8–10 tests, split across `test/f5PythonBackend.test.ts`):
+
+| # | Test | Covers |
+|---|------|--------|
+| 1 | `initialize()` calls `ensurePython()` then `startServer()` | Full init flow (lines 23–25) |
+| 2 | `startServer` resolves when stdout emits "READY" | Happy path (lines 82–86) |
+| 3 | `startServer` rejects after 60s timeout | Timeout branch (lines 77–79) |
+| 4 | `startServer` rejects on process error | Error event (lines 93–96) |
+| 5 | `startServer` sets `ready=false` on process exit | Exit handler (lines 88–91) |
+| 6 | `startServer` passes ref audio/text/quantization args | CLI arg construction (lines 71–79) |
+| 7 | `requestSynthesis` timeout destroys request | HTTP timeout → `req.destroy()` (lines 149–150) |
+| 8 | `synthesize` cleans up temp file on HTTP error | Finally block (line 50) |
+| 9 | `dispose` during `startServer` clears timeout | Cleanup during init |
+
+**Mock setup pattern for spawn**:
+```typescript
+import { EventEmitter } from "events";
+
+function mockChildProcess() {
+  const stdout = new EventEmitter();
+  const proc = Object.assign(new EventEmitter(), {
+    stdout, stderr: new EventEmitter(),
+    stdin: { write: vi.fn(), end: vi.fn() },
+    kill: vi.fn(), pid: 12345,
+  });
+  return proc;
+}
+
+// In test: emit "READY" to resolve startServer
+const proc = mockChildProcess();
+vi.mocked(spawn).mockReturnValue(proc as any);
+const initPromise = backend.initialize();
+proc.stdout.emit("data", Buffer.from("Server listening... READY\n"));
+await initPromise; // resolves
+```
+
+**Fake timers for timeout test**:
+```typescript
+vi.useFakeTimers();
+const proc = mockChildProcess();
+const initPromise = backend.initialize();
+vi.advanceTimersByTime(60_000); // trigger timeout
+await expect(initPromise).rejects.toThrow("failed to start within 60s");
+vi.useRealTimers();
+```
+
+**HTTP timeout test**: Use the existing real HTTP server pattern from `f5PythonIntegration.test.ts` but add a server handler that never responds, then verify the 120s timeout fires (with fake timers).
 
 #### Phase 2 — Multi-Voice & Agent Identity
 

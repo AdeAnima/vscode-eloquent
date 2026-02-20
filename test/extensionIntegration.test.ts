@@ -385,5 +385,59 @@ describe("extension integration", () => {
       // Should have called createBackend a second time for the re-init
       expect(createBackend).toHaveBeenCalledTimes(2);
     });
+
+    it("enables TTS when eloquent.enabled changes to true", async () => {
+      const ext = await import("../src/extension");
+      // Start disabled with a configured backend
+      configValues = { backend: "kokoro", enabled: false };
+      await ext.activate(fakeContext);
+
+      // Mock createBackend for the enableTts call
+      const backend = fakeBackend();
+      vi.mocked(createBackend).mockResolvedValueOnce(backend);
+      configValues.enabled = true;
+
+      const event = {
+        affectsConfiguration: (s: string) =>
+          s === "eloquent" || s === "eloquent.enabled",
+      };
+      for (const listener of onConfigChangeListeners) {
+        await listener(event);
+      }
+
+      expect(createBackend).toHaveBeenCalledWith("kokoro", expect.anything());
+      expect(backend.initialize).toHaveBeenCalled();
+    });
+  });
+
+  describe("activate() error handling", () => {
+    it("catches activation errors and shows error message", async () => {
+      // Make createOutputChannel throw on first call
+      vi.mocked(vscode.window.createOutputChannel).mockImplementationOnce(
+        () => {
+          throw new Error("Channel creation failed");
+        }
+      );
+
+      const ext = await import("../src/extension");
+      await ext.activate(fakeContext);
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Channel creation failed")
+      );
+    });
+
+    it("starts disabled when backend configured but enabled=false", async () => {
+      configValues = { backend: "kokoro", enabled: false };
+
+      const ext = await import("../src/extension");
+      await ext.activate(fakeContext);
+
+      // Should update status bar to disabled, not call createBackend
+      expect(createBackend).not.toHaveBeenCalled();
+      // At least one status bar should show muted state
+      const mainBar = statusBars[0];
+      expect(mainBar.text).toContain("mute");
+    });
   });
 });

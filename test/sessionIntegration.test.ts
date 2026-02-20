@@ -4,6 +4,18 @@ import { CancellationTokenSource, TextToSpeechStatus, setMockConfig } from "./__
 import { fakeBackend } from "./helpers/fakeBackend";
 import { collectEvents } from "./helpers/collectEvents";
 
+// Mock AudioPlayer so tests don't invoke real system playback commands.
+vi.mock("../src/player", () => {
+  class MockAudioPlayer {
+    paused = false;
+    play = vi.fn().mockResolvedValue(undefined);
+    pause = vi.fn();
+    resume = vi.fn();
+    stop = vi.fn();
+  }
+  return { AudioPlayer: MockAudioPlayer, encodeWav: vi.fn() };
+});
+
 /**
  * Integration tests for the full StreamingTextToSpeechSession lifecycle.
  *
@@ -15,16 +27,17 @@ import { collectEvents } from "./helpers/collectEvents";
 
 describe("StreamingTextToSpeechSession integration", () => {
   let provider: EloquentProvider;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     setMockConfig("eloquent", "initialBatchDelay", 0);
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     provider = new EloquentProvider();
   });
 
   afterEach(() => {
     setMockConfig("eloquent", "initialBatchDelay");
-    vi.restoreAllMocks();
+    consoleErrorSpy.mockRestore();
   });
 
   it("full lifecycle: synthesize → Started → Stopped", async () => {

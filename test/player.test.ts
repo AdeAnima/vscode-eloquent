@@ -211,4 +211,125 @@ describe("AudioPlayer speed arguments", () => {
     expect(args![0]).toBe("-q");
     expect(args).not.toContain("-r");
   });
+
+  it("uses powershell on windows", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const player = new AudioPlayer();
+    await player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    const [cmd, args] = execFileMock.mock.calls[0];
+    expect(cmd).toBe("powershell");
+    expect(args![0]).toBe("-c");
+    expect(args![1]).toContain("Media.SoundPlayer");
+  });
+});
+
+// ─── Playback error handling ──────────────────────────────────────────────
+
+describe("AudioPlayer error handling", () => {
+  let execFileMock: ReturnType<typeof vi.mocked<typeof import("child_process")["execFile"]>>;
+  let originalPlatform: PropertyDescriptor | undefined;
+
+  beforeEach(async () => {
+    const cp = await import("child_process");
+    execFileMock = vi.mocked(cp.execFile);
+    execFileMock.mockClear();
+    originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  });
+
+  afterEach(() => {
+    if (originalPlatform) {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("resolves on SIGTERM error (expected from stop())", async () => {
+    execFileMock.mockImplementationOnce((...args: any[]) => {
+      const cb = args[2] as Function;
+      cb(Object.assign(new Error("killed"), { signal: "SIGTERM" }));
+      return { kill: vi.fn() } as any;
+    });
+
+    const player = new AudioPlayer();
+    await expect(
+      player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 })
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects on non-SIGTERM playback error", async () => {
+    execFileMock.mockImplementationOnce((...args: any[]) => {
+      const cb = args[2] as Function;
+      cb(new Error("audio device busy"));
+      return { kill: vi.fn() } as any;
+    });
+
+    const player = new AudioPlayer();
+    await expect(
+      player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 })
+    ).rejects.toThrow("audio device busy");
+  });
+});
+
+// ─── Playback process signals ─────────────────────────────────────────────
+
+describe("AudioPlayer process signals", () => {
+  let execFileMock: ReturnType<typeof vi.mocked<typeof import("child_process")["execFile"]>>;
+  let originalPlatform: PropertyDescriptor | undefined;
+
+  beforeEach(async () => {
+    const cp = await import("child_process");
+    execFileMock = vi.mocked(cp.execFile);
+    execFileMock.mockClear();
+    originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  });
+
+  afterEach(() => {
+    if (originalPlatform) {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("sends SIGSTOP on pause and SIGCONT on resume with active process", async () => {
+    const killFn = vi.fn();
+    let resolveCb!: () => void;
+    execFileMock.mockImplementationOnce((...args: any[]) => {
+      const cb = args[2] as Function;
+      resolveCb = () => cb(null);
+      return { kill: killFn } as any;
+    });
+
+    const player = new AudioPlayer();
+    const playPromise = player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    player.pause();
+    expect(killFn).toHaveBeenCalledWith("SIGSTOP");
+
+    player.resume();
+    expect(killFn).toHaveBeenCalledWith("SIGCONT");
+
+    resolveCb();
+    await playPromise;
+  });
+
+  it("sends SIGCONT then SIGTERM on stop with active process", async () => {
+    const killFn = vi.fn();
+    let resolveCb!: () => void;
+    execFileMock.mockImplementationOnce((...args: any[]) => {
+      const cb = args[2] as Function;
+      resolveCb = () => cb(null);
+      return { kill: killFn } as any;
+    });
+
+    const player = new AudioPlayer();
+    const playPromise = player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    player.stop();
+    expect(killFn).toHaveBeenCalledWith("SIGCONT");
+    expect(killFn).toHaveBeenCalledWith("SIGTERM");
+
+    resolveCb();
+    await playPromise;
+  });
 });

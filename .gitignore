@@ -4,3 +4,4 @@ out/
 .vscode-test/
 server/__pycache__/
 server/*.pyc
+coverage/

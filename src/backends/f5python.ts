@@ -1,5 +1,6 @@
 import type { AudioChunk, TtsBackend } from "../types";
 import { chunkText } from "../chunker";
+import { parseWav } from "../wavParser";
 import { ensurePythonEnvironment } from "../installer";
 import { ChildProcess, spawn } from "child_process";
 import * as http from "http";
@@ -52,8 +53,7 @@ export class F5PythonBackend implements TtsBackend {
         if (signal.aborted) return;
 
         const wavBuffer = fs.readFileSync(tmpFile);
-        const audioData = this.parseWav(wavBuffer);
-        yield audioData;
+        yield parseWav(wavBuffer);
       } finally {
         fs.unlink(tmpFile, () => {});
       }
@@ -156,43 +156,5 @@ export class F5PythonBackend implements TtsBackend {
       req.write(body);
       req.end();
     });
-  }
-
-  // --- WAV parsing ---
-
-  private parseWav(buffer: Buffer): AudioChunk {
-    // Standard WAV: 44-byte header, then PCM data
-    // Read sample rate from bytes 24-27
-    const sampleRate = buffer.readUInt32LE(24);
-    const bitsPerSample = buffer.readUInt16LE(34);
-
-    // Find data chunk
-    let dataOffset = 12;
-    while (dataOffset < buffer.length - 8) {
-      const chunkId = buffer.toString("ascii", dataOffset, dataOffset + 4);
-      const chunkSize = buffer.readUInt32LE(dataOffset + 4);
-      if (chunkId === "data") {
-        dataOffset += 8;
-        const pcmData = buffer.subarray(dataOffset, dataOffset + chunkSize);
-        const samples = this.pcmToFloat32(pcmData, bitsPerSample);
-        return { samples, sampleRate };
-      }
-      dataOffset += 8 + chunkSize;
-    }
-    throw new Error("Invalid WAV: no data chunk");
-  }
-
-  private pcmToFloat32(pcm: Buffer, bitsPerSample: number): Float32Array {
-    if (bitsPerSample === 16) {
-      const samples = new Float32Array(pcm.length / 2);
-      for (let i = 0; i < samples.length; i++) {
-        samples[i] = pcm.readInt16LE(i * 2) / 32768;
-      }
-      return samples;
-    }
-    if (bitsPerSample === 32) {
-      return new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
-    }
-    throw new Error(`Unsupported WAV bits per sample: ${bitsPerSample}`);
   }
 }

@@ -1,5 +1,6 @@
 import type { AudioChunk, TtsBackend } from "../types";
 import { chunkText } from "../chunker";
+import { parseWav } from "../wavParser";
 import * as http from "http";
 import * as https from "https";
 
@@ -97,46 +98,11 @@ export class CustomBackend implements TtsBackend {
 
       if (signal.aborted) return;
 
-      const contentType = "audio/wav"; // assume WAV
-      const audioData = this.parseWav(wavBuffer);
-      yield audioData;
+      yield parseWav(wavBuffer);
     }
   }
 
   dispose(): void {
     // Nothing to clean up
-  }
-
-  private parseWav(buffer: Buffer): AudioChunk {
-    const sampleRate = buffer.readUInt32LE(24);
-    const bitsPerSample = buffer.readUInt16LE(34);
-
-    let dataOffset = 12;
-    while (dataOffset < buffer.length - 8) {
-      const chunkId = buffer.toString("ascii", dataOffset, dataOffset + 4);
-      const chunkSize = buffer.readUInt32LE(dataOffset + 4);
-      if (chunkId === "data") {
-        dataOffset += 8;
-        const pcmData = buffer.subarray(dataOffset, dataOffset + chunkSize);
-        const samples = this.pcmToFloat32(pcmData, bitsPerSample);
-        return { samples, sampleRate };
-      }
-      dataOffset += 8 + chunkSize;
-    }
-    throw new Error("Invalid WAV: no data chunk");
-  }
-
-  private pcmToFloat32(pcm: Buffer, bitsPerSample: number): Float32Array {
-    if (bitsPerSample === 16) {
-      const samples = new Float32Array(pcm.length / 2);
-      for (let i = 0; i < samples.length; i++) {
-        samples[i] = pcm.readInt16LE(i * 2) / 32768;
-      }
-      return samples;
-    }
-    if (bitsPerSample === 32) {
-      return new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
-    }
-    throw new Error(`Unsupported WAV bits per sample: ${bitsPerSample}`);
   }
 }

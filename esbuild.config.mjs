@@ -7,7 +7,7 @@ const ctx = await esbuild.context({
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
-  external: ["vscode"],
+  external: ["vscode", "kokoro-js", "onnxruntime-node"],
   format: "cjs",
   platform: "node",
   target: "node20",

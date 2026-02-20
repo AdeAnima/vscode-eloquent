@@ -1,8 +1,15 @@
 src/**
+test/**
 server/**
 node_modules/**
 .vscode/**
+.github/**
 tsconfig.json
 esbuild.config.mjs
+vitest.config.ts
+BRIEFING.md
+PROJECT.md
+RESEARCH-TTS-MODELS-2026.md
 *.map
 .gitignore
+.git/**

@@ -1,15 +1,29 @@
 {
-  "name": "vscode-f5-speech",
-  "displayName": "F5 Speech — High-Quality TTS for Copilot",
-  "description": "Replaces the default VS Code text-to-speech with F5-TTS-MLX for natural-sounding voice output in Copilot Chat.",
-  "version": "0.1.0",
+  "name": "vscode-eloquent",
+  "displayName": "Eloquent — High-Quality TTS for Copilot",
+  "description": "Replaces the built-in text-to-speech with natural-sounding voices. Multiple backends: Kokoro (Node.js), F5-TTS (voice cloning), or your own endpoint.",
+  "version": "0.1.0-beta.1",
   "publisher": "adeanima",
   "license": "MIT",
+  "preview": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adeanima/vscode-eloquent"
+  },
   "engines": {
     "vscode": "^1.99.0"
   },
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "speech",
+    "voice",
+    "kokoro",
+    "copilot",
+    "accessibility"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -21,55 +35,178 @@
   "contributes": {
     "commands": [
       {
-        "command": "f5Speech.startServer",
-        "title": "F5 Speech: Start TTS Server"
+        "command": "eloquent.setup",
+        "title": "Eloquent: Choose TTS Backend"
       },
       {
-        "command": "f5Speech.stopServer",
-        "title": "F5 Speech: Stop TTS Server"
+        "command": "eloquent.toggle",
+        "title": "Eloquent: Toggle TTS On/Off"
       },
       {
-        "command": "f5Speech.readAloud",
-        "title": "F5 Speech: Read Selection Aloud"
+        "command": "eloquent.enable",
+        "title": "Eloquent: Enable TTS"
+      },
+      {
+        "command": "eloquent.disable",
+        "title": "Eloquent: Disable TTS"
+      },
+      {
+        "command": "eloquent.pause",
+        "title": "Eloquent: Pause / Resume"
+      },
+      {
+        "command": "eloquent.readAloud",
+        "title": "Eloquent: Read Selection Aloud"
+      },
+      {
+        "command": "eloquent.changeVoice",
+        "title": "Eloquent: Change Voice"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "eloquent.welcome",
+        "title": "Get Started with Eloquent",
+        "description": "Set up high-quality text-to-speech for Copilot Chat in a few steps.",
+        "steps": [
+          {
+            "id": "chooseBackend",
+            "title": "Choose Your TTS Engine",
+            "description": "Pick a backend: **Kokoro** (recommended), **F5-TTS** (voice cloning), or a **custom** HTTP endpoint.\n\n[Choose TTS Backend](command:eloquent.setup)",
+            "media": {
+              "markdown": "media/walkthrough/choose-backend.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:eloquent.backend"
+            ]
+          },
+          {
+            "id": "chooseVoice",
+            "title": "Pick a Voice",
+            "description": "Kokoro offers 28 voices across American and British accents. Switch anytime.\n\n[Change Voice](command:eloquent.changeVoice)",
+            "media": {
+              "markdown": "media/walkthrough/choose-voice.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:eloquent.voice"
+            ]
+          },
+          {
+            "id": "tryItOut",
+            "title": "Use with Copilot Chat",
+            "description": "Open Copilot Chat, click the speaker icon, and ask a question. Eloquent will read the response aloud.\n\n[Read Selection Aloud](command:eloquent.readAloud)",
+            "media": {
+              "markdown": "media/walkthrough/use-with-copilot.md"
+            },
+            "completionEvents": [
+              "onCommand:eloquent.readAloud"
+            ]
+          },
+          {
+            "id": "shortcuts",
+            "title": "Keyboard Shortcuts & Tips",
+            "description": "Toggle TTS: `Cmd+Alt+T` · Pause: `Cmd+Alt+P` · Adjust speed in settings.",
+            "media": {
+              "markdown": "media/walkthrough/shortcuts.md"
+            }
+          }
+        ]
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "eloquent.toggle",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t"
+      },
+      {
+        "command": "eloquent.pause",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
       }
     ],
     "configuration": {
-      "title": "F5 Speech",
+      "title": "Eloquent",
       "properties": {
-        "f5Speech.pythonPath": {
-          "type": "string",
-          "default": "python3",
-          "description": "Path to the Python interpreter with f5-tts-mlx installed."
+        "eloquent.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable Eloquent TTS."
         },
-        "f5Speech.serverPort": {
+        "eloquent.backend": {
+          "type": "string",
+          "enum": [
+            "kokoro",
+            "f5-python",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "Kokoro — 82M-param Node.js ONNX model (recommended, no Python)",
+            "F5-TTS — 330M-param Apple Silicon model with voice cloning (auto-installs Python)",
+            "Custom — bring your own HTTP TTS endpoint"
+          ],
+          "default": "",
+          "description": "TTS backend engine. Leave empty to trigger setup wizard on first launch."
+        },
+        "eloquent.voice": {
+          "type": "string",
+          "default": "af_heart",
+          "description": "Voice preset for Kokoro backend (e.g. af_heart, am_michael, bf_emma)."
+        },
+        "eloquent.speed": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 2,
+          "description": "Playback speed multiplier. 1.0 = normal, 1.5 = 50% faster, 0.75 = slower."
+        },
+        "eloquent.prefetchBufferSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Number of audio chunks to synthesize ahead of playback. Higher = smoother but more memory. Lower = less latency on slow machines."
+        },
+        "eloquent.kokoroDtype": {
+          "type": "string",
+          "enum": [
+            "fp32",
+            "fp16",
+            "q8",
+            "q4"
+          ],
+          "default": "q8",
+          "description": "Kokoro model quantization level. q8 recommended for quality/size balance."
+        },
+        "eloquent.serverPort": {
           "type": "number",
           "default": 18230,
-          "description": "Port for the local F5-TTS server."
+          "description": "Port for the F5-TTS Python server (f5-python backend only)."
         },
-        "f5Speech.refAudioPath": {
+        "eloquent.refAudioPath": {
           "type": "string",
           "default": "",
-          "description": "Path to a reference audio file (mono, 24kHz WAV, 5-10s) for voice cloning. Leave empty for default voice."
+          "description": "Reference audio for voice cloning (f5-python backend only). Mono 24kHz WAV, 5-10s."
         },
-        "f5Speech.refText": {
+        "eloquent.refText": {
           "type": "string",
           "default": "",
-          "description": "Transcript of the reference audio for voice cloning."
+          "description": "Transcript of the reference audio (f5-python backend only)."
         },
-        "f5Speech.quantization": {
+        "eloquent.quantization": {
           "type": "string",
           "enum": [
             "none",
             "4",
             "8"
           ],
-          "default": "none",
-          "description": "Model quantization level (4-bit or 8-bit) for lower memory usage."
+          "default": "8",
+          "description": "F5-TTS model quantization (f5-python backend only)."
         },
-        "f5Speech.autoStart": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically start the TTS server when VS Code launches."
+        "eloquent.customEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL for custom TTS server (custom backend only). Must accept POST /synthesize."
         }
       }
     }
@@ -77,13 +214,18 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
     "package": "vsce package",
     "fetch-types": "npx @vscode/dts dev"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.109.0",
     "@vscode/dts": "^0.4.0",
     "esbuild": "^0.24.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
   }
 }

@@ -7,10 +7,42 @@ vi.mock("../src/installer", () => ({
   ensureKokoroInstalled: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock kokoro-js dynamic import
+const mockFromPretrained = vi.fn().mockResolvedValue({
+  generate: vi.fn().mockResolvedValue({
+    audio: new Float32Array([0.1, 0.2]),
+    sampling_rate: 24000,
+  }),
+});
+vi.mock("kokoro-js", () => ({
+  KokoroTTS: {
+    from_pretrained: mockFromPretrained,
+  },
+}));
+
+import { ensureKokoroInstalled } from "../src/installer";
+
 describe("KokoroBackend", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("has correct name", () => {
     const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
     expect(backend.name).toBe("Kokoro");
+  });
+
+  it("initialize installs kokoro-js and loads model with config", async () => {
+    const backend = new KokoroBackend({ dtype: "fp16", voice: "am_adam", extensionPath: "/my/ext" });
+    await backend.initialize();
+
+    expect(ensureKokoroInstalled).toHaveBeenCalledWith("/my/ext");
+    expect(mockFromPretrained).toHaveBeenCalledWith(
+      "onnx-community/Kokoro-82M-v1.0-ONNX",
+      { dtype: "fp16", device: "cpu" }
+    );
+    // After initialize, synthesize should work
+    expect((backend as any).tts).toBeTruthy();
   });
 
   it("synthesize throws when not initialized", async () => {

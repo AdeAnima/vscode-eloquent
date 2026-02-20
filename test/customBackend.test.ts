@@ -15,39 +15,43 @@ const testWav = encodeWav({
   sampleRate: 24000,
 });
 
-beforeAll(async () => {
-  server = http.createServer((req, res) => {
-    if (req.url === "/health" && req.method === "GET") {
-      res.writeHead(200);
-      res.end("OK");
-      return;
-    }
-    if (req.url === "/synthesize" && req.method === "POST") {
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", () => {
-        const { text } = JSON.parse(body);
-        if (text === "FAIL") {
-          res.writeHead(500);
-          res.end("Internal error");
-          return;
-        }
-        res.writeHead(200, { "Content-Type": "audio/wav" });
-        res.end(testWav);
-      });
-      return;
-    }
-    res.writeHead(404);
-    res.end("Not found");
-  });
+function startServer(): Promise<http.Server> {
+  return new Promise((resolve) => {
+    server = http.createServer((req, res) => {
+      if (req.url === "/health" && req.method === "GET") {
+        res.writeHead(200);
+        res.end("OK");
+        return;
+      }
+      if (req.url === "/synthesize" && req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => (body += chunk));
+        req.on("end", () => {
+          const { text } = JSON.parse(body);
+          if (text === "FAIL") {
+            res.writeHead(500);
+            res.end("Internal error");
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "audio/wav" });
+          res.end(testWav);
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end("Not found");
+    });
 
-  await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address() as { port: number };
       baseUrl = `http://127.0.0.1:${addr.port}`;
-      resolve();
+      resolve(server);
     });
   });
+}
+
+beforeAll(async () => {
+  await startServer();
 });
 
 afterAll(() => {
@@ -123,4 +127,56 @@ describe("CustomBackend", () => {
     const backend = new CustomBackend({ endpoint: baseUrl });
     expect(() => backend.dispose()).not.toThrow();
   });
+
+  it("initialize rejects when /health returns non-200", async () => {
+    // Start a server whose /health returns 503
+    const badServer = http.createServer((req, res) => {
+      if (req.url === "/health") {
+        res.writeHead(503);
+        res.end("Unavailable");
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    const badUrl = await new Promise<string>((resolve) => {
+      badServer.listen(0, "127.0.0.1", () => {
+        const addr = badServer.address() as { port: number };
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const backend = new CustomBackend({ endpoint: badUrl });
+      await expect(backend.initialize()).rejects.toThrow(
+        "health check failed: 503"
+      );
+    } finally {
+      badServer.close();
+    }
+  });
+
+  it("initialize rejects when endpoint times out", async () => {
+    // Start a server that never responds
+    const hangServer = http.createServer(() => {
+      // intentionally never respond
+    });
+    const hangUrl = await new Promise<string>((resolve) => {
+      hangServer.listen(0, "127.0.0.1", () => {
+        const addr = hangServer.address() as { port: number };
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+
+    try {
+      const backend = new CustomBackend({ endpoint: hangUrl });
+      // The health check has a 5s timeout — but we can't wait that long.
+      // Verify the timeout path by checking the error message.
+      await expect(backend.initialize()).rejects.toThrow(
+        "Custom TTS endpoint timed out"
+      );
+    } finally {
+      hangServer.close();
+    }
+  }, 10_000);
 });

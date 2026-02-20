@@ -114,12 +114,16 @@ describe("F5PythonBackend HTTP integration", () => {
       // consume
     }
 
-    // Give the async unlink a moment
-    await new Promise((r) => setTimeout(r, 200));
+    // Poll for the async unlink to complete (up to 2s)
+    let newFiles: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const after = new Set(fs.readdirSync(tmpDir).filter((f) => f.startsWith("eloquent-")));
+      newFiles = [...after].filter((f) => !before.has(f));
+      if (newFiles.length === 0) break;
+    }
 
-    const after = new Set(fs.readdirSync(tmpDir).filter((f) => f.startsWith("eloquent-")));
     // The temp file should be cleaned up (no new files remaining)
-    const newFiles = [...after].filter((f) => !before.has(f));
     expect(newFiles.length).toBe(0);
   });
 

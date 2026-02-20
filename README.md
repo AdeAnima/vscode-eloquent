@@ -1,5 +1,7 @@
 # Eloquent — High-Quality TTS for VS Code
 
+[![CI](https://github.com/AdeAnima/vscode-eloquent/actions/workflows/ci.yml/badge.svg)](https://github.com/AdeAnima/vscode-eloquent/actions/workflows/ci.yml)
+
 Replaces the built-in text-to-speech with natural-sounding voices powered by local AI models. Works with Copilot Chat, read-aloud, and any VS Code speech consumer.
 
 > **Beta.** Requires [VS Code Insiders](https://code.visualstudio.com/insiders/) — uses the proposed `speech` API.

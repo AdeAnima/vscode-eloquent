@@ -9,7 +9,7 @@ VS Code extension replacing built-in TTS with high-quality local speech synthesi
 ```bash
 npm install          # install dependencies
 npm run build        # esbuild → out/extension.js
-npm test             # vitest (125 tests)
+npm test             # vitest (160 tests)
 npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
 ```
@@ -77,11 +77,15 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 - `test/chunkedSynthesizer.test.ts` — Streaming, abort, prefetch buffer
 - `test/speechProvider.test.ts` — Provider lifecycle, pause/resume, session creation
 - `test/sessionIntegration.test.ts` — Full session lifecycle: synthesize → events, cancellation, errors
-- `test/player.test.ts` — Audio playback, platform detection, pause/resume signals
+- `test/player.test.ts` — WAV encoding, playback state machine, speed arguments
 - `test/kokoroBackend.test.ts` — Kokoro backend initialization, synthesis
 - `test/customBackend.test.ts` — Custom HTTP backend, WAV parsing
 - `test/wavParser.test.ts` — WAV header parsing, validation
 - `test/f5PythonBackend.test.ts` — F5-Python backend, subprocess management
+- `test/f5PythonIntegration.test.ts` — F5-Python HTTP integration with test server
+- `test/installer.test.ts` — `runCommand`, `ensureKokoroInstalled`, npm detection
+- `test/extensionIntegration.test.ts` — Full `activate()`, command registration, handlers
+- `test/statusBar.test.ts` — Status bar updates, visibility, state transitions
 - `test/setup.test.ts` — Backend picker, voice picker, setup flow
 
 ## Conventions

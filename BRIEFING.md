@@ -191,11 +191,15 @@ vscode-eloquent/
 │   ├── chunkedSynthesizer.test.ts # 6 tests: streaming, abort, prefetch
 │   ├── speechProvider.test.ts     # 15 tests: provider lifecycle, sessions
 │   ├── sessionIntegration.test.ts # 8 tests: full session lifecycle integration
-│   ├── player.test.ts             # 13 tests: audio playback, signals
+│   ├── player.test.ts             # 16 tests: WAV encoding, playback, speed args
 │   ├── kokoroBackend.test.ts      # 8 tests: Kokoro backend
 │   ├── customBackend.test.ts      # 7 tests: Custom HTTP backend
 │   ├── wavParser.test.ts          # 8 tests: WAV parsing
 │   ├── f5PythonBackend.test.ts    # 5 tests: F5-Python backend
+│   ├── f5PythonIntegration.test.ts # 6 tests: F5-Python HTTP integration
+│   ├── installer.test.ts          # 7 tests: npm install, Python setup
+│   ├── extensionIntegration.test.ts # 10 tests: activate(), commands
+│   ├── statusBar.test.ts          # 9 tests: status bar state transitions
 │   ├── setup.test.ts              # 9 tests: setup flow
 │   └── __mocks__/vscode.ts        # VS Code mock with EventEmitter, CancellationToken
 ├── media/
@@ -334,7 +338,7 @@ vscode-eloquent/
 
 ## 12. Tests
 
-125 test cases across 11 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
+160 test cases across 15 test files, using vitest with a VS Code mock (`test/__mocks__/vscode.ts`).
 
 | File | Cases | What's Tested |
 |------|-------|---------------|
@@ -343,11 +347,15 @@ vscode-eloquent/
 | `test/chunkedSynthesizer.test.ts` | 6 | Streaming, abort, prefetch buffer, error propagation |
 | `test/speechProvider.test.ts` | 15 | Provider lifecycle, pause/resume, session creation |
 | `test/sessionIntegration.test.ts` | 8 | Full session lifecycle: synthesize → events, cancellation, errors |
-| `test/player.test.ts` | 13 | Audio playback, platform detection, pause/resume signals |
+| `test/player.test.ts` | 16 | WAV encoding, playback state machine, speed arguments |
 | `test/kokoroBackend.test.ts` | 8 | Kokoro backend initialization, synthesis, model loading |
 | `test/customBackend.test.ts` | 7 | Custom HTTP backend, WAV parsing, error handling |
 | `test/wavParser.test.ts` | 8 | WAV header parsing, validation, edge cases |
 | `test/f5PythonBackend.test.ts` | 5 | F5-Python backend, subprocess management |
+| `test/f5PythonIntegration.test.ts` | 6 | F5-Python HTTP integration with test server |
+| `test/installer.test.ts` | 7 | `runCommand`, `ensureKokoroInstalled`, npm detection |
+| `test/extensionIntegration.test.ts` | 10 | Full `activate()`, command registration, handlers |
+| `test/statusBar.test.ts` | 9 | Status bar updates, visibility, state transitions |
 | `test/setup.test.ts` | 9 | Backend picker, voice picker, setup flow |
 
 ```bash
@@ -359,7 +367,11 @@ npm run test:watch   # vitest in watch mode
 
 ## 13. Known Issues & Tech Debt
 
-1. **Kokoro TextSplitterStream unused**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming, but the extension uses its own `chunkText()` + `ChunkedSynthesizer` instead. The custom implementation gives more control over chunk sizing and prefetch, but the tradeoff should be revisited.
+No known issues at this time.
+
+### Resolved Design Decisions
+
+- **Kokoro TextSplitterStream**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming. After evaluation, the extension keeps its own `chunkText()` + `ChunkedSynthesizer` because: (1) it works with all backends (Kokoro, F5-Python, Custom), not just Kokoro; (2) it provides prefetch buffering with configurable depth; (3) it supports `AbortSignal` cancellation; (4) it gives full control over chunk sizing. The `TextSplitterStream` is Kokoro-specific (`tts.stream(splitter)`) and would only benefit one backend while losing generality.
 
 ---
 

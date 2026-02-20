@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioPlayer, encodeWav } from "../src/player";
+import { setMockConfig } from "./__mocks__/vscode";
 import type { AudioChunk } from "../src/types";
 
 // ─── encodeWav ────────────────────────────────────────────────────────────────
@@ -140,5 +141,74 @@ describe("AudioPlayer", () => {
       samples: new Float32Array([0.1]),
       sampleRate: 24000,
     });
+  });
+});
+
+// ─── Playback speed arguments ─────────────────────────────────────────────
+
+// To test playFile() internals we need to mock child_process.execFile.
+// ESM modules aren't spy-able, so we use vi.mock at module level.
+vi.mock("child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("child_process")>();
+  return {
+    ...actual,
+    execFile: vi.fn((_cmd: string, _args: string[], cb: Function) => {
+      cb(null);
+      return { kill: vi.fn() };
+    }),
+  };
+});
+
+describe("AudioPlayer speed arguments", () => {
+  let execFileMock: ReturnType<typeof vi.mocked<typeof import("child_process")["execFile"]>>;
+  let originalPlatform: PropertyDescriptor | undefined;
+
+  beforeEach(async () => {
+    const cp = await import("child_process");
+    execFileMock = vi.mocked(cp.execFile);
+    execFileMock.mockClear();
+
+    // Force darwin platform for predictable afplay args
+    originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  });
+
+  afterEach(() => {
+    setMockConfig("eloquent", "speed");
+    if (originalPlatform) {
+      Object.defineProperty(process, "platform", originalPlatform);
+    }
+  });
+
+  it("passes default speed 1.0 to afplay -r", async () => {
+    const player = new AudioPlayer();
+    await player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    expect(execFileMock).toHaveBeenCalledOnce();
+    const [cmd, args] = execFileMock.mock.calls[0];
+    expect(cmd).toBe("afplay");
+    expect(args![0]).toBe("-r");
+    expect(args![1]).toBe("1");
+  });
+
+  it("passes custom speed to afplay -r", async () => {
+    setMockConfig("eloquent", "speed", 1.5);
+    const player = new AudioPlayer();
+    await player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    const [, args] = execFileMock.mock.calls[0];
+    expect(args![0]).toBe("-r");
+    expect(args![1]).toBe("1.5");
+  });
+
+  it("uses aplay on linux (no speed arg)", async () => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    const player = new AudioPlayer();
+    await player.play({ samples: new Float32Array([0.1]), sampleRate: 24000 });
+
+    const [cmd, args] = execFileMock.mock.calls[0];
+    expect(cmd).toBe("aplay");
+    expect(args![0]).toBe("-q");
+    expect(args).not.toContain("-r");
   });
 });

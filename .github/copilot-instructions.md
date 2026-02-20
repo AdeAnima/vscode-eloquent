@@ -34,7 +34,7 @@ Key files: [BRIEFING.md](../BRIEFING.md) has full architecture details.
 ```bash
 npm install          # Node dependencies
 npm run build        # esbuild bundle → out/extension.js
-npm test             # vitest (~125 tests)
+npm test             # vitest (~160 tests)
 npm run typecheck    # tsc --noEmit
 npm run watch        # rebuild on save
 npm run fetch-types  # update proposed API types (npx @vscode/dts dev)

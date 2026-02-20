@@ -1,4 +1,6 @@
 // Minimal vscode mock for tests
+import { vi } from "vitest";
+
 const configOverrides: Record<string, Record<string, unknown>> = {};
 
 /** Set a config value in the mock. Call with no value to clear. */
@@ -50,9 +52,9 @@ export const window = {
     text: "",
     tooltip: "",
     command: "",
-    show: () => {},
-    hide: () => {},
-    dispose: () => {},
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn(),
   }),
   showInformationMessage: () => {},
   showErrorMessage: () => {},

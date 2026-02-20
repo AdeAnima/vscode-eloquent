@@ -5,6 +5,32 @@ export const workspace = {
   }),
 };
 
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
+export const window = {
+  createOutputChannel: (_name: string) => ({
+    appendLine: () => {},
+    show: () => {},
+    dispose: () => {},
+  }),
+  createStatusBarItem: (
+    _alignment?: StatusBarAlignment,
+    _priority?: number
+  ) => ({
+    text: "",
+    tooltip: "",
+    command: "",
+    show: () => {},
+    hide: () => {},
+    dispose: () => {},
+  }),
+  showInformationMessage: () => {},
+  showErrorMessage: () => {},
+};
+
 export enum TextToSpeechStatus {
   Started = 1,
   Stopped = 2,

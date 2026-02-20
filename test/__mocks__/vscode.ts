@@ -19,7 +19,16 @@ export const workspace = {
       if (overrides && key in overrides) return overrides[key] as T;
       return defaultValue;
     },
+    update: vi.fn().mockResolvedValue(undefined),
   }),
+};
+
+export const commands = {
+  registerCommand: vi.fn().mockImplementation(() => ({ dispose: vi.fn() })),
+};
+
+export const speech = {
+  registerSpeechProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
 
 export enum StatusBarAlignment {

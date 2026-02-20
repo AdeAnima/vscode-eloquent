@@ -1,4 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { AudioChunk, TtsBackend } from "../src/types";
+
+// ─── Mocks ────────────────────────────────────────────────────────────────────
+
+const mockRunSetupWizard = vi.fn();
+const mockCreateBackend = vi.fn();
+const mockShowVoicePicker = vi.fn();
+vi.mock("../src/setup", () => ({
+  runSetupWizard: (...args: any[]) => mockRunSetupWizard(...args),
+  createBackend: (...args: any[]) => mockCreateBackend(...args),
+  showVoicePicker: (...args: any[]) => mockShowVoicePicker(...args),
+}));
+
+const mockPlayerPlay = vi.fn().mockResolvedValue(undefined);
+vi.mock("../src/player", () => ({
+  AudioPlayer: class {
+    play = mockPlayerPlay;
+    dispose = vi.fn();
+  },
+}));
+
+// ─── Imports (after mocks) ────────────────────────────────────────────────────
+
 import {
   disableTts,
   togglePause,
@@ -7,39 +30,19 @@ import {
   initializeAndRegister,
   registerCommands,
   testVoice,
+  enableTts,
+  toggleTts,
+  setupBackend,
   type ExtensionServices,
 } from "../src/commands";
 import { EloquentProvider } from "../src/speechProvider";
 import { StatusBarManager } from "../src/statusBar";
-import type { AudioChunk, TtsBackend } from "../src/types";
 import * as vscode from "vscode";
-
-// Mock backends to prevent heavy imports
-vi.mock("../src/backends/kokoro", () => ({
-  KokoroBackend: class {
-    name = "Kokoro";
-  },
-}));
-vi.mock("../src/backends/f5python", () => ({
-  F5PythonBackend: class {
-    name = "F5-TTS (Python)";
-  },
-}));
-vi.mock("../src/backends/custom", () => ({
-  CustomBackend: class {
-    name = "Custom";
-  },
-}));
-vi.mock("../src/installer", () => ({
-  ensureKokoroInstalled: vi.fn(),
-  ensurePythonEnvironment: vi.fn(),
-}));
+import { setMockConfig } from "./__mocks__/vscode";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fakeBackend(opts?: {
-  initFail?: boolean;
-}): TtsBackend {
+function fakeBackend(opts?: { initFail?: boolean }): TtsBackend {
   return {
     name: "FakeBackend",
     initialize: opts?.initFail
@@ -55,7 +58,9 @@ function fakeBackend(opts?: {
   };
 }
 
-function makeServices(overrides?: Partial<ExtensionServices>): ExtensionServices {
+function makeServices(
+  overrides?: Partial<ExtensionServices>
+): ExtensionServices {
   return {
     provider: new EloquentProvider(),
     outputChannel: {
@@ -77,39 +82,69 @@ function makeContext(): vscode.ExtensionContext {
   } as unknown as vscode.ExtensionContext;
 }
 
+/** Patch vscode.window/speech/commands for command tests. */
+function patchVscode() {
+  // Module exports are read-only, so mutate properties on the existing objects
+  vscode.commands.registerCommand = vi.fn().mockImplementation((_id: string) => ({
+    dispose: vi.fn(),
+  }));
+  vscode.speech.registerSpeechProvider = vi.fn().mockReturnValue({ dispose: vi.fn() });
+  (vscode.window as any).showWarningMessage = vi.fn();
+  (vscode.window as any).showInformationMessage = vi
+    .fn()
+    .mockResolvedValue("OK");
+  (vscode.window as any).showErrorMessage = vi.fn();
+  (vscode.window as any).withProgress = vi
+    .fn()
+    .mockImplementation((_opts: any, task: any) =>
+      task({ report: vi.fn() })
+    );
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("commands", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    patchVscode();
   });
+
+  afterEach(() => {
+    setMockConfig("eloquent", "backend");
+    setMockConfig("eloquent", "enabled");
+  });
+
+  // ── registerCommands ──────────────────────────────────────────────────
 
   describe("registerCommands", () => {
     it("registers all 7 commands", () => {
       const context = makeContext();
       const services = makeServices();
 
-      // Need commands.registerCommand to be a spy
-      const registered: string[] = [];
-      (vscode.commands as any) = {
-        registerCommand: vi.fn().mockImplementation((id: string, handler: any) => {
-          registered.push(id);
-          return { dispose: vi.fn() };
-        }),
-      };
-
       registerCommands(context, services);
 
-      expect(registered).toContain("eloquent.setup");
-      expect(registered).toContain("eloquent.toggle");
-      expect(registered).toContain("eloquent.enable");
-      expect(registered).toContain("eloquent.disable");
-      expect(registered).toContain("eloquent.pause");
-      expect(registered).toContain("eloquent.readAloud");
-      expect(registered).toContain("eloquent.changeVoice");
-      expect(registered.length).toBe(7);
+      const ids = (vscode.commands.registerCommand as any).mock.calls.map(
+        (c: any[]) => c[0]
+      );
+      expect(ids).toEqual([
+        "eloquent.setup",
+        "eloquent.toggle",
+        "eloquent.enable",
+        "eloquent.disable",
+        "eloquent.pause",
+        "eloquent.readAloud",
+        "eloquent.changeVoice",
+      ]);
+    });
+
+    it("pushes disposables to context.subscriptions", () => {
+      const context = makeContext();
+      registerCommands(context, makeServices());
+      expect(context.subscriptions.length).toBe(7);
     });
   });
+
+  // ── disableTts ────────────────────────────────────────────────────────
 
   describe("disableTts", () => {
     it("disposes speech registration and backend", () => {
@@ -128,10 +163,21 @@ describe("commands", () => {
       const services = makeServices();
       expect(() => disableTts(services)).not.toThrow();
     });
+
+    it("updates status bar to inactive", () => {
+      const services = makeServices();
+      const spy = vi.spyOn(services.statusBar, "update");
+
+      disableTts(services);
+
+      expect(spy).toHaveBeenCalledWith(false);
+    });
   });
 
+  // ── togglePause ───────────────────────────────────────────────────────
+
   describe("togglePause", () => {
-    it("calls provider.togglePause", () => {
+    it("delegates to provider.togglePause", () => {
       const services = makeServices();
       const spy = vi.spyOn(services.provider, "togglePause");
 
@@ -141,11 +187,11 @@ describe("commands", () => {
     });
   });
 
+  // ── readSelectionAloud ────────────────────────────────────────────────
+
   describe("readSelectionAloud", () => {
     it("warns when no backend set", async () => {
       const services = makeServices();
-      (vscode.window as any).showWarningMessage = vi.fn();
-
       await readSelectionAloud(services);
 
       expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
@@ -157,7 +203,6 @@ describe("commands", () => {
       const services = makeServices();
       services.provider.setBackend(fakeBackend());
       (vscode.window as any).activeTextEditor = undefined;
-      (vscode.window as any).showWarningMessage = vi.fn();
 
       await readSelectionAloud(services);
 
@@ -166,14 +211,13 @@ describe("commands", () => {
       );
     });
 
-    it("warns when selection is empty text", async () => {
+    it("warns when selection is empty/whitespace", async () => {
       const services = makeServices();
       services.provider.setBackend(fakeBackend());
       (vscode.window as any).activeTextEditor = {
         selection: { isEmpty: true },
         document: { getText: () => "   " },
       };
-      (vscode.window as any).showWarningMessage = vi.fn();
 
       await readSelectionAloud(services);
 
@@ -181,25 +225,28 @@ describe("commands", () => {
         "No text to read."
       );
     });
+
+    it("synthesizes and plays audio for selected text", async () => {
+      const services = makeServices();
+      services.provider.setBackend(fakeBackend());
+      (vscode.window as any).activeTextEditor = {
+        selection: { isEmpty: false },
+        document: { getText: () => "Hello world" },
+      };
+
+      await readSelectionAloud(services);
+
+      expect(mockPlayerPlay).toHaveBeenCalled();
+    });
   });
+
+  // ── initializeAndRegister ─────────────────────────────────────────────
 
   describe("initializeAndRegister", () => {
     it("initializes backend and registers speech provider", async () => {
       const context = makeContext();
       const services = makeServices();
       const backend = fakeBackend();
-
-      (vscode.speech as any) = {
-        registerSpeechProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
-      };
-      (vscode.window as any).withProgress = vi
-        .fn()
-        .mockImplementation((_opts: any, task: any) =>
-          task({ report: vi.fn() })
-        );
-      (vscode.window as any).showInformationMessage = vi
-        .fn()
-        .mockResolvedValue("OK");
 
       await initializeAndRegister(context, services, backend);
 
@@ -216,45 +263,12 @@ describe("commands", () => {
       const services = makeServices();
       const backend = fakeBackend({ initFail: true });
 
-      (vscode.window as any).withProgress = vi
-        .fn()
-        .mockImplementation((_opts: any, task: any) =>
-          task({ report: vi.fn() })
-        );
-      (vscode.window as any).showErrorMessage = vi.fn();
-
       await initializeAndRegister(context, services, backend);
 
       expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
         expect.stringContaining("Failed to initialize")
       );
-      // Speech provider should NOT be registered
       expect(services.speechRegistration).toBeUndefined();
-    });
-
-    it("offers Test Voice and runs it when selected", async () => {
-      const context = makeContext();
-      const services = makeServices();
-      const backend = fakeBackend();
-
-      (vscode.speech as any) = {
-        registerSpeechProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
-      };
-      (vscode.window as any).withProgress = vi
-        .fn()
-        .mockImplementation((_opts: any, task: any) =>
-          task({ report: vi.fn() })
-        );
-      // Simulate clicking "Test Voice"
-      (vscode.window as any).showInformationMessage = vi
-        .fn()
-        .mockResolvedValue("Test Voice");
-
-      await initializeAndRegister(context, services, backend);
-
-      // testVoice should have been called (backend.synthesize invoked)
-      // The backend synthesize is an async generator — it was called
-      expect(backend.initialize).toHaveBeenCalled();
     });
 
     it("disposes previous speech registration", async () => {
@@ -265,48 +279,176 @@ describe("commands", () => {
       });
       const backend = fakeBackend();
 
-      (vscode.speech as any) = {
-        registerSpeechProvider: vi.fn().mockReturnValue({ dispose: vi.fn() }),
-      };
-      (vscode.window as any).withProgress = vi
-        .fn()
-        .mockImplementation((_opts: any, task: any) =>
-          task({ report: vi.fn() })
-        );
-      (vscode.window as any).showInformationMessage = vi
-        .fn()
-        .mockResolvedValue("OK");
-
       await initializeAndRegister(context, services, backend);
 
       expect(oldDispose).toHaveBeenCalled();
     });
-  });
 
-  describe("testVoice", () => {
-    it("synthesizes test text", async () => {
+    it("sets status bar to loading then active", async () => {
+      const context = makeContext();
       const services = makeServices();
-      const backend = fakeBackend();
+      const spy = vi.spyOn(services.statusBar, "update");
 
-      await testVoice(services, backend);
+      await initializeAndRegister(context, services, fakeBackend());
 
-      // The status bar should be updated back to active
-      // (testVoice restores status in finally block)
+      expect(spy).toHaveBeenCalledWith(false, true); // loading
+      expect(spy).toHaveBeenCalledWith(true); // active
+    });
+
+    it("runs testVoice when user clicks 'Test Voice'", async () => {
+      const context = makeContext();
+      const services = makeServices();
+      (vscode.window as any).showInformationMessage = vi
+        .fn()
+        .mockResolvedValue("Test Voice");
+
+      // testVoice plays audio
+      await initializeAndRegister(context, services, fakeBackend());
+
+      expect(mockPlayerPlay).toHaveBeenCalled();
     });
   });
 
+  // ── testVoice ─────────────────────────────────────────────────────────
+
+  describe("testVoice", () => {
+    it("plays audio and restores status bar", async () => {
+      const services = makeServices();
+      const spy = vi.spyOn(services.statusBar, "update");
+
+      await testVoice(services, fakeBackend());
+
+      expect(mockPlayerPlay).toHaveBeenCalled();
+      expect(spy).toHaveBeenCalledWith(true); // finally block
+    });
+
+    it("shows error on synthesis failure", async () => {
+      const services = makeServices();
+      const backend: TtsBackend = {
+        name: "Bad",
+        initialize: vi.fn(),
+        async *synthesize() {
+          throw new Error("synthesis boom");
+        },
+        dispose: vi.fn(),
+      };
+
+      await testVoice(services, backend);
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining("synthesis boom")
+      );
+    });
+  });
+
+  // ── setupBackend ──────────────────────────────────────────────────────
+
+  describe("setupBackend", () => {
+    it("returns without registering if wizard cancelled", async () => {
+      mockRunSetupWizard.mockResolvedValue(undefined);
+
+      const services = makeServices();
+      await setupBackend(makeContext(), services);
+
+      expect(services.speechRegistration).toBeUndefined();
+    });
+
+    it("initializes backend from wizard result", async () => {
+      const backend = fakeBackend();
+      mockRunSetupWizard.mockResolvedValue(backend);
+
+      const services = makeServices();
+      await setupBackend(makeContext(), services);
+
+      expect(backend.initialize).toHaveBeenCalled();
+      expect(services.speechRegistration).toBeDefined();
+    });
+  });
+
+  // ── enableTts ─────────────────────────────────────────────────────────
+
+  describe("enableTts", () => {
+    it("runs setup wizard when no backend configured", async () => {
+      mockRunSetupWizard.mockResolvedValue(undefined);
+
+      await enableTts(makeContext(), makeServices());
+
+      expect(mockRunSetupWizard).toHaveBeenCalled();
+    });
+
+    it("creates and initializes configured backend", async () => {
+      setMockConfig("eloquent", "backend", "kokoro");
+      const backend = fakeBackend();
+      mockCreateBackend.mockResolvedValue(backend);
+
+      const services = makeServices();
+      await enableTts(makeContext(), services);
+
+      expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
+      expect(backend.initialize).toHaveBeenCalled();
+    });
+  });
+
+  // ── toggleTts ─────────────────────────────────────────────────────────
+
+  describe("toggleTts", () => {
+    it("disables when currently enabled", async () => {
+      setMockConfig("eloquent", "enabled", true);
+      const services = makeServices();
+      services.speechRegistration = { dispose: vi.fn() };
+      const spy = vi.spyOn(services.statusBar, "update");
+
+      await toggleTts(makeContext(), services);
+
+      expect(spy).toHaveBeenCalledWith(false);
+      expect(services.speechRegistration).toBeUndefined();
+    });
+
+    it("enables when currently disabled", async () => {
+      setMockConfig("eloquent", "enabled", false);
+      mockRunSetupWizard.mockResolvedValue(undefined);
+
+      await toggleTts(makeContext(), makeServices());
+
+      // Falls through to enableTts → setupBackend because no backend configured
+      expect(mockRunSetupWizard).toHaveBeenCalled();
+    });
+  });
+
+  // ── changeVoice ───────────────────────────────────────────────────────
+
   describe("changeVoice", () => {
     it("shows message when not kokoro backend", async () => {
-      const context = makeContext();
-      const services = makeServices();
-      (vscode.window as any).showInformationMessage = vi.fn();
+      setMockConfig("eloquent", "backend", "f5python");
 
-      // Default config returns empty string for "backend" → not "kokoro"
-      await changeVoice(context, services);
+      await changeVoice(makeContext(), makeServices());
 
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
         expect.stringContaining("only available for the Kokoro backend")
       );
+    });
+
+    it("returns without action if voice picker cancelled", async () => {
+      setMockConfig("eloquent", "backend", "kokoro");
+      mockShowVoicePicker.mockResolvedValue(undefined);
+
+      const services = makeServices();
+      await changeVoice(makeContext(), services);
+
+      expect(services.speechRegistration).toBeUndefined();
+    });
+
+    it("re-creates and initializes backend with new voice", async () => {
+      setMockConfig("eloquent", "backend", "kokoro");
+      mockShowVoicePicker.mockResolvedValue("af_sky");
+      const backend = fakeBackend();
+      mockCreateBackend.mockResolvedValue(backend);
+
+      const services = makeServices();
+      await changeVoice(makeContext(), services);
+
+      expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
+      expect(backend.initialize).toHaveBeenCalled();
     });
   });
 });

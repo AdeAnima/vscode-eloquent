@@ -319,4 +319,68 @@ describe("preprocessForSpeech", () => {
       expect(preprocessForSpeech("enable tts output")).toContain("T T S");
     });
   });
+
+  // --- Integration: full markdown → speech pipeline ---
+  describe("integration: realistic markdown to speech", () => {
+    it("processes Copilot-style response with code, links, and formatting", () => {
+      const markdown = [
+        "## Getting Started",
+        "",
+        "First, install the **npm** package:",
+        "",
+        "```bash",
+        "npm install kokoro-js",
+        "```",
+        "",
+        "Then check the [API docs](https://example.com/docs) for details.",
+        "",
+        "| Feature | Status |",
+        "| ------- | ------ |",
+        "| TTS     | ✓      |",
+        "| SSR     | ✗      |",
+      ].join("\n");
+
+      const result = preprocessForSpeech(markdown);
+
+      // Heading gets period
+      expect(result).toContain("Getting Started.");
+      // Bold stripped, npm expanded on first use
+      expect(result).toContain("NPM, the Node Package Manager,");
+      // Code block rendered as prose
+      expect(result).toContain("bash code example:");
+      // Link text preserved, URL removed
+      expect(result).toContain("A P I");
+      expect(result).toContain("docs");
+      expect(result).not.toContain("https://");
+      // Table converted to spoken form
+      expect(result).toContain("Feature: T T S");
+      expect(result).toContain("Status: yes");
+      // Emoji replaced
+      expect(result).not.toContain("✓");
+      expect(result).not.toContain("✗");
+    });
+
+    it("handles emoji-heavy LLM output with arrows and special chars", () => {
+      const text = "Step 1 → Install deps. Step 2 → Run tests. ⚠️ Don't forget!";
+      const result = preprocessForSpeech(text);
+
+      expect(result).toContain("to Install");
+      expect(result).toContain("to Run");
+      expect(result).toContain("warning:");
+      expect(result).not.toContain("→");
+      expect(result).not.toContain("⚠");
+    });
+
+    it("abbreviations expand only on first occurrence", () => {
+      const text = "The api uses url paths. Check the api url.";
+      const result = preprocessForSpeech(text);
+
+      // First occurrence expanded
+      expect(result).toContain("A P I");
+      expect(result).toContain("U R L");
+      // Count: "A P I" should appear once (first), then literal "api" second time
+      const apiExpansions = result.split("A P I").length - 1;
+      expect(apiExpansions).toBe(1);
+    });
+  });
 });

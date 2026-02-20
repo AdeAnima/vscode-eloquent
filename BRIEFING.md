@@ -418,23 +418,25 @@ Planned code-health and scalability improvements, mapped to roadmap phases.
 
 ##### Remaining Coverage Gaps (by priority)
 
-Coverage report from `npx vitest run --coverage` (2026-02-20, v0.1.0-beta.3). 245 tests, 16 files. Thresholds: 90% stmts / 85% branches / 90% funcs / 92% lines.
+Coverage report from `npx vitest run --coverage` (2026-02-20, v0.1.0-beta.3+). 255 tests, 16 files. Thresholds: 90% stmts / 85% branches / 90% funcs / 92% lines.
 
 | File | Stmts | Branches | Uncovered Lines | What's Missing |
 |------|-------|----------|-----------------|----------------|
-| `commands.ts` | 91.74% | 77.77% | 28–34, 217–218 | `registerCommands()` subscription push detail (28–34), `readSelectionAloud` no-backend guard (217–218) |
-| `installer.ts` | 93.61% | 79.16% | 83–86 | `getPythonDownloadUrl()` unsupported platform/arch throw. Private function, only testable via `ensurePythonEnvironment()` on unsupported platform. |
-| `extension.ts` | 94.23% | 80.76% | 28, 32 | Minor wiring: output channel creation (28), walkthrough timer scheduling (32). Low value to test. |
+| `commands.ts` | 94.49% | 86.11% | 28–34 | `registerCommands()` lambda bodies — thin wrappers that delegate to tested functions. Low value. |
+| `extension.ts` | 94.23% | 80.76% | 28, 32 | Minor wiring: output channel creation (28), walkthrough timer scheduling (32). Low value. |
 | `chunker.ts` | 91.48% | 85% | 87–88, 121–122, 153 | `waitForChange` immediate return (87–88), prefetch buffer full + abort race (121–122), consumer waiting (153). Require carefully timed async tests. |
-| `textPreprocessor.ts` | 100% | 88.88% | 153, 260 | Abbreviation expansion edge cases |
-| `setup.ts` | 90.69% | 94.73% | 100–104 | `promptCustomEndpoint()` URL validation branch |
-| `player.ts` | 97.5% | 95.45% | 80–81 | `playFile()` stopped guard — extremely narrow race window, low value to test |
-| `speechProvider.ts` | 98.73% | 90.9% | 174, 184 | Error handling in `runPlaybackLoop` edge cases |
+| `textPreprocessor.ts` | 100% | 88.88% | 153, 260 | Abbreviation expansion edge cases (table body with no data rows, regex alternation). |
+| `setup.ts` | 90.69% | 94.73% | 100–104 | `promptCustomEndpoint()` URL validation branch. |
+| `player.ts` | 97.5% | 95.45% | 80–81 | `playFile()` stopped guard — extremely narrow race window, low value. |
+| `speechProvider.ts` | 98.73% | 90.9% | 174, 184 | Error handling in `runPlaybackLoop` edge cases. |
+
+**Files now at 100% statements**: `installer.ts`, `statusBar.ts`, `types.ts`, `wavParser.ts`.
+**Files now at 100% branches**: `statusBar.ts`, `types.ts`, `wavParser.ts`.
 
 **Recommended next targets** (best ROI):
-1. **`commands.ts`** (77.8% branches): Test `registerCommands()` subscription detail and `readSelectionAloud` no-backend guard.
-2. **`installer.ts`** (79.2% branches): Mock unsupported platform to hit the throw branch.
-3. **`chunker.ts`** (85% branches): Carefully timed async tests for `waitForChange` immediate return and prefetch buffer backpressure race conditions.
+1. **`extension.ts`** (80.8% branches): Test walkthrough timer and output channel creation.
+2. **`chunker.ts`** (85% branches): Carefully timed async tests for consumer waiting and buffer backpressure.
+3. **`textPreprocessor.ts`** (88.9% branches): Edge cases in table processing and abbreviation regex.
 
 #### Phase 2 — Multi-Voice & Agent Identity
 
@@ -466,15 +468,15 @@ Coverage report from `npx vitest run --coverage` (2026-02-20, v0.1.0-beta.3). 24
 
 ### What Was Done
 
-Multi-session testing initiative taking the project from 15.2% to **95.64% statement coverage** (245 tests, 16 files, all green). Key deliverables:
+Multi-session testing initiative taking the project from 15.2% to **96.43% statement coverage** (255 tests, 16 files, all green). Key deliverables:
 
 | Deliverable | Commit | Impact |
 |-------------|--------|--------|
-| Extract extension.ts → commands.ts + statusBar.ts | `37020e3` | extension.ts ~330→113 lines; commands.ts 92% covered, statusBar.ts 100% |
+| Extract extension.ts → commands.ts + statusBar.ts | `37020e3` | extension.ts ~330→113 lines; commands.ts 94% covered, statusBar.ts 100% |
 | onDidChangeConfiguration handler | `c621bad` | Runtime setting changes without reload |
 | Structured logging (LogOutputChannel) | `c621bad` | `.info()`, `.warn()`, `.error()` with log levels |
-| installer.ts test coverage 34%→93.61% | `1bd0109` | 18 tests: full ensurePythonEnvironment flow |
-| f5python.ts test coverage 57%→95.16% | `1bd0109` | 11 tests: startServer lifecycle, CLI args, abort |
+| installer.ts test coverage 34%→100% | `1bd0109`+`866e9ec` | 20 tests: full ensurePythonEnvironment flow, Linux/win32 platform branches |
+| f5python.ts test coverage 57%→98.38% | `1bd0109` | 11 tests: startServer lifecycle, CLI args, abort |
 | Backend config interfaces (KokoroConfig, F5Config, CustomConfig) | `3add491` | Typed config objects in types.ts |
 | ExtensionServices dependency injection | Part of A1 | Testable state management, no hidden globals |
 | Coverage thresholds in vitest.config.ts | `8da271c` | CI enforces 90/85/90/92 minimums |
@@ -483,28 +485,52 @@ Multi-session testing initiative taking the project from 15.2% to **95.64% state
 | Session integration test isolation + speedup | `ad0ad30` | MockAudioPlayer, 3.6s→48ms |
 | Chunker branch coverage 82.5%→85% | `8da271c` | Backpressure, abort, non-Error throw tests |
 | Emoji/special char stripping + abbreviation expansion | `4485ccf` | Cleaner TTS output for markdown symbols |
+| CI coverage gate enforcement | `866e9ec` | `npm run test:coverage` in CI — regressions fail PRs |
+| Commands.ts assertion hardening + branch gaps | `866e9ec`+ | 12→0 bare assertions, +5 branch tests (86.1% branches) |
+| Injectable healthCheckTimeout in CustomBackend | `866e9ec` | Test suite 5.2s→0.4s for custom backend |
+| StatusBar.ts assertion hardening | current | 10→0 bare assertions, constructor mock hygiene |
+| Preprocessor integration tests | current | 3 end-to-end tests: markdown→speech pipeline |
 
 ### What's Working
 
-- **All 245 tests pass** — `npm test` green, `npm run build` clean, `npm run typecheck` clean
-- **CI pipeline**: GitHub Actions runs tests on Node 20+22, typecheck on Node 22
+- **All 255 tests pass** — `npm test` green, `npm run build` clean, `npm run typecheck` clean
+- **CI pipeline**: GitHub Actions runs tests **with coverage enforcement** on Node 20+22, typecheck on Node 22
 - **Release pipeline**: `v*` tags trigger test → build → vsce package → GitHub Release
 - **All Phase 1 (A1–A5) and Phase 2 (B1–B2) improvements complete**
-- **Coverage well above thresholds**: 95.64% stmts (90%), 87.12% branches (85%), 93.79% funcs (90%), 97.05% lines (92%)
+- **Coverage well above thresholds**: 96.43% stmts (90%), 89.47% branches (85%), 93.79% funcs (90%), 97.75% lines (92%)
+- **6 files at 100% statements**: installer.ts, statusBar.ts, types.ts, wavParser.ts, textPreprocessor.ts, custom.ts
+- **Zero bare `.toHaveBeenCalled()` assertions** in commands.test.ts and statusBar.test.ts (down from 22 total)
+- **Suite runtime**: ~640ms (from ~5.5s before injectable timeouts)
+
+### Test Suite Review Status
+
+The `test-suite-review-v2-2026-02-20-k9m4t1.md` document identified 7 gaps. Current status:
+
+| # | Gap | Priority | Status |
+|---|-----|----------|--------|
+| 1 | CI coverage gate | P0 | **Done** — `npm run test:coverage` in ci.yml |
+| 2 | Assertion hardening | P0 | **Done** — commands (12→0) + statusBar (10→0) bare assertions |
+| 3 | Timeout test speedup | P1 | **Done** — injectable healthCheckTimeout, suite 5.2s→0.4s |
+| 4 | Branch gap closure | P1 | **Done** — commands 77.8→86.1%, installer 79.2→91.7%, all files ≥80% branches |
+| 5 | Mock fidelity | P1 | Open — lower priority, no user-facing impact |
+| 6 | E2E smoke tests | P2 | Open — `@vscode/test-electron` introduction |
+| 7 | Mutation testing | P2 | Open — Stryker pilot on critical modules |
 
 ### Recommended Next Steps (priority order)
 
-#### 1. Close Remaining Branch Coverage Gaps
+#### 1. E2E Smoke Tests with @vscode/test-electron
 
-Three areas have branch coverage below 90% and would benefit from targeted tests:
+All unit/integration testing is done to a high standard. The next quality frontier is real Extension Host validation:
+- Activation in VS Code Insiders
+- Command registration and execution
+- Status bar visibility
+- Walkthrough open behavior
 
-- **`commands.ts` (77.8% branches)**: Uncovered lines 28-34 (error handling in `initializeAndRegister`), 217-218 (edge cases in toggle logic). Add tests for initialization failures and toggle state transitions.
-- **`installer.ts` (79.2% branches)**: Uncovered lines 83-86 (platform-specific npm detection paths). Add tests for Windows/Linux npm resolution branches.
-- **`chunker.ts` remaining branches (85%)**: Lines 87-88 (`waitForChange` immediate return when pending), 121-122 (prefetch buffer full + abort race), 153 (consumer waiting for chunk). These require carefully timed async tests.
+This requires `@vscode/test-electron` pointed at Insiders and is the main gap between current tests and production confidence.
 
-#### 2. Add Integration Tests for Preprocessor Features
+#### 2. Mutation Testing Pilot
 
-The new abbreviation expansion and emoji stripping features (`4485ccf`) would benefit from integration tests that verify the full pipeline: markdown input → preprocessor → chunker → backend receives clean text.
+With 89.5% branch coverage, mutation testing (Stryker) would reveal assertions that pass despite behavior changes. Recommended scope: `chunker.ts`, `commands.ts`, `speechProvider.ts` — the three modules where permissive assertions are most likely to mask regressions.
 
 #### 3. Feature Work: Multi-Agent Voice
 

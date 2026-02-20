@@ -40,6 +40,7 @@ import * as vscode from "vscode";
 import { setMockConfig } from "./__mocks__/vscode";
 import { fakeBackend } from "./helpers/fakeBackend";
 import { makeContext } from "./helpers/makeContext";
+import type { TtsBackend } from "../src/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -220,6 +221,44 @@ describe("commands", () => {
         expect.objectContaining({ sampleRate: 24000 })
       );
     });
+
+    it("reads full document when selection is empty but document has text", async () => {
+      const services = makeServices();
+      services.provider.setBackend(fakeBackend());
+      (vscode.window as any).activeTextEditor = {
+        selection: { isEmpty: true },
+        document: { getText: () => "Full document text" },
+      };
+
+      await readSelectionAloud(services);
+
+      expect(mockPlayerPlay).toHaveBeenCalledWith(
+        expect.objectContaining({ sampleRate: 24000 })
+      );
+    });
+
+    it("shows error when synthesis throws non-Error value", async () => {
+      const services = makeServices();
+      const backend: TtsBackend = {
+        name: "Bad",
+        initialize: vi.fn(),
+        async *synthesize() {
+          throw "string error";
+        },
+        dispose: vi.fn(),
+      };
+      services.provider.setBackend(backend);
+      (vscode.window as any).activeTextEditor = {
+        selection: { isEmpty: false },
+        document: { getText: () => "Hello" },
+      };
+
+      await readSelectionAloud(services);
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining("string error")
+      );
+    });
   });
 
   // ── initializeAndRegister ─────────────────────────────────────────────
@@ -325,6 +364,24 @@ describe("commands", () => {
         expect.stringContaining("synthesis boom")
       );
     });
+
+    it("handles non-Error throw in synthesis", async () => {
+      const services = makeServices();
+      const backend: TtsBackend = {
+        name: "Bad",
+        initialize: vi.fn(),
+        async *synthesize() {
+          throw 42;
+        },
+        dispose: vi.fn(),
+      };
+
+      await testVoice(services, backend);
+
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining("42")
+      );
+    });
   });
 
   // ── setupBackend ──────────────────────────────────────────────────────
@@ -373,6 +430,16 @@ describe("commands", () => {
       expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
       expect(backend.initialize).toHaveBeenCalledTimes(1);
     });
+
+    it("returns early when createBackend yields undefined", async () => {
+      setMockConfig("eloquent", "backend", "kokoro");
+      mockCreateBackend.mockResolvedValue(undefined);
+
+      const services = makeServices();
+      await enableTts(makeContext(), services);
+
+      expect(services.speechRegistration).toBeUndefined();
+    });
   });
 
   // ── toggleTts ─────────────────────────────────────────────────────────
@@ -388,6 +455,17 @@ describe("commands", () => {
 
       expect(spy).toHaveBeenCalledWith(false);
       expect(services.speechRegistration).toBeUndefined();
+    });
+
+    it("enables when enabled=true but no registration", async () => {
+      setMockConfig("eloquent", "enabled", true);
+      mockRunSetupWizard.mockResolvedValue(undefined);
+
+      const services = makeServices(); // no speechRegistration
+      await toggleTts(makeContext(), services);
+
+      // Falls through to enableTts because !services.speechRegistration
+      expect(mockRunSetupWizard).toHaveBeenCalledTimes(1);
     });
 
     it("enables when currently disabled", async () => {

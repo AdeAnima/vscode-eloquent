@@ -306,5 +306,36 @@ describe("installer", () => {
 
       expect(mockMkdirSync).toHaveBeenCalledWith(storageDir, { recursive: true });
     });
+
+    it("generates Linux download URL on linux platform", async () => {
+      mockExistsSync.mockReturnValue(false);
+      mockExecSuccess();
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "linux" });
+
+      try {
+        await ensurePythonEnvironment(storageDir);
+
+        const curlCall = mockExecFile.mock.calls[0];
+        const urlArg = curlCall[1].find((a: string) => a.includes("python-build-standalone"));
+        expect(urlArg).toContain("linux-gnu");
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform });
+      }
+    });
+
+    it("throws on unsupported platform (win32)", async () => {
+      mockExistsSync.mockReturnValue(false);
+      const origPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32" });
+
+      try {
+        await expect(ensurePythonEnvironment(storageDir)).rejects.toThrow(
+          "not supported on win32"
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: origPlatform });
+      }
+    });
   });
 });

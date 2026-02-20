@@ -58,25 +58,25 @@ afterAll(() => {
 
 describe("CustomBackend", () => {
   it("has correct name", () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     expect(backend.name).toBe("Custom Endpoint");
   });
 
   it("initialize succeeds with healthy endpoint", async () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     await expect(backend.initialize()).resolves.toBeUndefined();
   });
 
   it("initialize resolves even when /health returns error (graceful)", async () => {
     // Connect to the server but health returns error — this should still resolve
     // because the code treats connection errors gracefully
-    const backend = new CustomBackend("http://127.0.0.1:1"); // unreachable port
+    const backend = new CustomBackend({ endpoint: "http://127.0.0.1:1" }); // unreachable port
     // The code resolves on "error" event, so this should not throw
     await expect(backend.initialize()).resolves.toBeUndefined();
   });
 
   it("synthesize returns audio chunks for valid text", async () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     await backend.initialize();
 
     const abort = new AbortController();
@@ -91,7 +91,7 @@ describe("CustomBackend", () => {
   });
 
   it("synthesize stops on abort signal", async () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     await backend.initialize();
 
     const abort = new AbortController();
@@ -106,7 +106,7 @@ describe("CustomBackend", () => {
   });
 
   it("synthesize rejects on server error", async () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     await backend.initialize();
 
     const abort = new AbortController();
@@ -120,7 +120,7 @@ describe("CustomBackend", () => {
   });
 
   it("dispose is a no-op (does not throw)", () => {
-    const backend = new CustomBackend(baseUrl);
+    const backend = new CustomBackend({ endpoint: baseUrl });
     expect(() => backend.dispose()).not.toThrow();
   });
 });

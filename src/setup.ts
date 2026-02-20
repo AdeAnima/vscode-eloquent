@@ -144,7 +144,7 @@ export async function createBackend(
         );
       }
       const dtype = config.get<string>("kokoroDtype", "q8");
-      return new KokoroBackend(dtype, voice, context.extensionPath);
+      return new KokoroBackend({ dtype, voice, extensionPath: context.extensionPath });
     }
 
     case "f5-python": {
@@ -155,17 +155,10 @@ export async function createBackend(
         "tts_server.py"
       );
       const port = config.get<number>("serverPort", 18230);
-      const refAudio = config.get<string>("refAudioPath", "");
+      const refAudioPath = config.get<string>("refAudioPath", "");
       const refText = config.get<string>("refText", "");
       const quantization = config.get<string>("quantization", "none");
-      return new F5PythonBackend(
-        storageDir,
-        serverScript,
-        port,
-        refAudio,
-        refText,
-        quantization
-      );
+      return new F5PythonBackend({ storageDir, serverScript, port, refAudioPath, refText, quantization });
     }
 
     case "custom": {
@@ -179,7 +172,7 @@ export async function createBackend(
           vscode.ConfigurationTarget.Global
         );
       }
-      return new CustomBackend(endpoint);
+      return new CustomBackend({ endpoint });
     }
   }
 }

@@ -1,4 +1,4 @@
-import type { AudioChunk, TtsBackend } from "../types";
+import type { AudioChunk, KokoroConfig, TtsBackend } from "../types";
 import { ensureKokoroInstalled } from "../installer";
 
 /**
@@ -12,22 +12,18 @@ export class KokoroBackend implements TtsBackend {
   readonly name = "Kokoro";
   private tts: any = null;
 
-  constructor(
-    private readonly dtype: string = "q8",
-    private readonly voice: string = "af_heart",
-    private readonly extensionPath: string = ""
-  ) {}
+  constructor(private readonly config: KokoroConfig) {}
 
   async initialize(): Promise<void> {
     // Install kokoro-js if not yet in node_modules
-    await ensureKokoroInstalled(this.extensionPath);
+    await ensureKokoroInstalled(this.config.extensionPath);
 
     // Dynamic import — kokoro-js is an ESM-only package
     const { KokoroTTS } = await import("kokoro-js");
     this.tts = await KokoroTTS.from_pretrained(
       "onnx-community/Kokoro-82M-v1.0-ONNX",
       {
-        dtype: this.dtype as any,
+        dtype: this.config.dtype as any,
         device: "cpu",
       }
     );
@@ -43,7 +39,7 @@ export class KokoroBackend implements TtsBackend {
 
     if (signal.aborted) return;
 
-    const result = await this.tts.generate(text, { voice: this.voice });
+    const result = await this.tts.generate(text, { voice: this.config.voice });
 
     if (signal.aborted) return;
 

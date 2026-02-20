@@ -9,12 +9,12 @@ vi.mock("../src/installer", () => ({
 
 describe("KokoroBackend", () => {
   it("has correct name", () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
     expect(backend.name).toBe("Kokoro");
   });
 
   it("synthesize throws when not initialized", async () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
     const abort = new AbortController();
 
     await expect(async () => {
@@ -25,7 +25,7 @@ describe("KokoroBackend", () => {
   });
 
   it("synthesize yields chunks from the TTS model", async () => {
-    const backend = new KokoroBackend("q8", "af_heart", "/tmp/fake");
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "/tmp/fake" });
 
     // Directly set the internal tts object to a mock
     (backend as any).tts = {
@@ -50,7 +50,7 @@ describe("KokoroBackend", () => {
   });
 
   it("synthesize handles non-Float32Array audio result", async () => {
-    const backend = new KokoroBackend("q8", "am_michael", "/tmp/fake");
+    const backend = new KokoroBackend({ dtype: "q8", voice: "am_michael", extensionPath: "/tmp/fake" });
 
     // Some kokoro-js versions return a plain array
     (backend as any).tts = {
@@ -72,7 +72,7 @@ describe("KokoroBackend", () => {
   });
 
   it("synthesize defaults to 24000 when sampling_rate missing", async () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
 
     (backend as any).tts = {
       generate: vi.fn().mockResolvedValue({
@@ -91,7 +91,7 @@ describe("KokoroBackend", () => {
   });
 
   it("synthesize respects abort signal", async () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
 
     const generateFn = vi.fn().mockResolvedValue({
       audio: new Float32Array([0.1]),
@@ -115,7 +115,7 @@ describe("KokoroBackend", () => {
   });
 
   it("synthesize stops after abort mid-generation", async () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
 
     const generateFn = vi.fn().mockImplementation(async () => {
       return {
@@ -142,7 +142,7 @@ describe("KokoroBackend", () => {
   });
 
   it("dispose nulls the tts instance", () => {
-    const backend = new KokoroBackend();
+    const backend = new KokoroBackend({ dtype: "q8", voice: "af_heart", extensionPath: "" });
     (backend as any).tts = { generate: vi.fn() };
 
     backend.dispose();

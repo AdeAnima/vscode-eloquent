@@ -1,11 +1,11 @@
-import type { AudioChunk, TtsBackend } from "../types";
+import type { AudioChunk, F5Config, TtsBackend } from "../types";
 import { parseWav } from "../wavParser";
 import { ensurePythonEnvironment } from "../installer";
 import { ChildProcess, spawn } from "child_process";
 import * as http from "http";
-import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
+import * as path from "path";
 
 /**
  * F5-TTS-MLX backend via python-build-standalone.
@@ -20,14 +20,7 @@ export class F5PythonBackend implements TtsBackend {
   private process: ChildProcess | null = null;
   private ready = false;
 
-  constructor(
-    private readonly storageDir: string,
-    private readonly serverScript: string,
-    private readonly port: number = 18230,
-    private readonly refAudioPath: string = "",
-    private readonly refText: string = "",
-    private readonly quantization: string = "none"
-  ) {}
+  constructor(private readonly config: F5Config) {}
 
   async initialize(): Promise<void> {
     const pythonPath = await this.ensurePython();
@@ -67,22 +60,22 @@ export class F5PythonBackend implements TtsBackend {
   // --- Python runtime management ---
 
   private async ensurePython(): Promise<string> {
-    return ensurePythonEnvironment(this.storageDir);
+    return ensurePythonEnvironment(this.config.storageDir);
   }
 
   // --- Server lifecycle ---
 
   private startServer(pythonPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const args = [this.serverScript, "--port", String(this.port)];
-      if (this.refAudioPath) {
-        args.push("--ref-audio", this.refAudioPath);
+      const args = [this.config.serverScript, "--port", String(this.config.port)];
+      if (this.config.refAudioPath) {
+        args.push("--ref-audio", this.config.refAudioPath);
       }
-      if (this.refText) {
-        args.push("--ref-text", this.refText);
+      if (this.config.refText) {
+        args.push("--ref-text", this.config.refText);
       }
-      if (this.quantization !== "none") {
-        args.push("--quantize", this.quantization);
+      if (this.config.quantization !== "none") {
+        args.push("--quantize", this.config.quantization);
       }
 
       this.process = spawn(pythonPath, args, {
@@ -126,7 +119,7 @@ export class F5PythonBackend implements TtsBackend {
       const req = http.request(
         {
           hostname: "127.0.0.1",
-          port: this.port,
+          port: this.config.port,
           path: "/synthesize",
           method: "POST",
           headers: {

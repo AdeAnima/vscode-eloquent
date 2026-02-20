@@ -29,12 +29,12 @@ describe("F5PythonBackend", () => {
   });
 
   it("has correct name", () => {
-    const backend = new F5PythonBackend("/tmp/store", "/tmp/server.py");
+    const backend = new F5PythonBackend({ storageDir: "/tmp/store", serverScript: "/tmp/server.py", port: 18230, refAudioPath: "", refText: "", quantization: "none" });
     expect(backend.name).toBe("F5-TTS (Python)");
   });
 
   it("synthesize throws when not initialized", async () => {
-    const backend = new F5PythonBackend("/tmp/store", "/tmp/server.py");
+    const backend = new F5PythonBackend({ storageDir: "/tmp/store", serverScript: "/tmp/server.py", port: 18230, refAudioPath: "", refText: "", quantization: "none" });
     const abort = new AbortController();
 
     await expect(async () => {
@@ -45,7 +45,7 @@ describe("F5PythonBackend", () => {
   });
 
   it("dispose kills the process", () => {
-    const backend = new F5PythonBackend("/tmp/store", "/tmp/server.py");
+    const backend = new F5PythonBackend({ storageDir: "/tmp/store", serverScript: "/tmp/server.py", port: 18230, refAudioPath: "", refText: "", quantization: "none" });
     // Simulate a running process
     (backend as any).process = mockProcess;
     (backend as any).ready = true;
@@ -58,7 +58,7 @@ describe("F5PythonBackend", () => {
   });
 
   it("dispose is safe when no process is running", () => {
-    const backend = new F5PythonBackend("/tmp/store", "/tmp/server.py");
+    const backend = new F5PythonBackend({ storageDir: "/tmp/store", serverScript: "/tmp/server.py", port: 18230, refAudioPath: "", refText: "", quantization: "none" });
     // Should not throw
     backend.dispose();
     expect((backend as any).process).toBeNull();
@@ -66,7 +66,7 @@ describe("F5PythonBackend", () => {
   });
 
   it("synthesize respects abort signal when pre-aborted", async () => {
-    const backend = new F5PythonBackend("/tmp/store", "/tmp/server.py");
+    const backend = new F5PythonBackend({ storageDir: "/tmp/store", serverScript: "/tmp/server.py", port: 18230, refAudioPath: "", refText: "", quantization: "none" });
     (backend as any).ready = true;
 
     const abort = new AbortController();

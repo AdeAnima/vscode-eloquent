@@ -1,4 +1,4 @@
-import type { AudioChunk, TtsBackend } from "../types";
+import type { AudioChunk, CustomConfig, TtsBackend } from "../types";
 import { parseWav } from "../wavParser";
 import * as http from "http";
 import * as https from "https";
@@ -13,11 +13,11 @@ import * as https from "https";
 export class CustomBackend implements TtsBackend {
   readonly name = "Custom Endpoint";
 
-  constructor(private readonly endpoint: string) {}
+  constructor(private readonly config: CustomConfig) {}
 
   async initialize(): Promise<void> {
     // Validate endpoint is reachable
-    const url = new URL(this.endpoint);
+    const url = new URL(this.config.endpoint);
     const client = url.protocol === "https:" ? https : http;
 
     await new Promise<void>((resolve, reject) => {
@@ -52,7 +52,7 @@ export class CustomBackend implements TtsBackend {
   ): AsyncIterable<AudioChunk> {
     if (signal.aborted) return;
 
-    const url = new URL(this.endpoint);
+    const url = new URL(this.config.endpoint);
     const client = url.protocol === "https:" ? https : http;
     const body = JSON.stringify({ text });
 

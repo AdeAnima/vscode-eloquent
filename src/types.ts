@@ -35,6 +35,28 @@ export interface TtsBackend {
 
 export type BackendId = "kokoro" | "f5-python" | "custom";
 
+/** Kokoro ONNX backend configuration. */
+export interface KokoroConfig {
+  dtype: string;
+  voice: string;
+  extensionPath: string;
+}
+
+/** F5-TTS Python/MLX backend configuration. */
+export interface F5Config {
+  storageDir: string;
+  serverScript: string;
+  port: number;
+  refAudioPath: string;
+  refText: string;
+  quantization: string;
+}
+
+/** Custom HTTP endpoint backend configuration. */
+export interface CustomConfig {
+  endpoint: string;
+}
+
 export interface BackendConfig {
   id: BackendId;
   label: string;

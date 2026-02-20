@@ -418,24 +418,23 @@ Planned code-health and scalability improvements, mapped to roadmap phases.
 
 ##### Remaining Coverage Gaps (by priority)
 
-Coverage report from `npx vitest run --coverage` (2026-02-20). All Phase 1 targets achieved. Below are the remaining gaps for future work.
+Coverage report from `npx vitest run --coverage` (2026-02-20, v0.1.0-beta.3). 245 tests, 16 files. Thresholds: 90% stmts / 85% branches / 90% funcs / 92% lines.
 
 | File | Stmts | Branches | Uncovered Lines | What's Missing |
 |------|-------|----------|-----------------|----------------|
-| `setup.ts` | 74.41% | 78.94% | 100–123, 169 | `promptCustomEndpoint()` (showInputBox + URL validation), `runSetupWizard()` full flow (pick backend → save config → createBackend) |
-| `kokoro.ts` | 75% | 90% | 19–23 | `initialize()` body: `ensureKokoroInstalled()` call + dynamic `import("kokoro-js")` + `KokoroTTS.from_pretrained()`. Requires mocking ESM dynamic import. |
-| `custom.ts` | 84.21% | 66.66% | 31, 43–44, 88–89 | HTTPS client selection branch (line 31: `url.protocol === "https:" ? https : http`), health check non-200 rejection (43–44), synthesis `req.on("timeout")` handler (88–89) |
-| `player.ts` | 85% | 63.63% | 98–99, 108–111 | Windows PowerShell playback branch (lines 108–111: `powershell -c (New-Object Media.SoundPlayer ...)`), Linux `aplay` branch (lines 98–99) |
-| `chunker.ts` | 90.12% | 78.94% | 98–99, 130, 145 | `ChunkedSynthesizer` edge cases: producer `waitForSpace` backpressure (line 98–99), `flushed && emittedUpTo >= chunks.length` early return (line 145), 80ms poll sleep (line 130) |
 | `commands.ts` | 91.74% | 77.77% | 28–34, 217–218 | `registerCommands()` subscription push detail (28–34), `readSelectionAloud` no-backend guard (217–218) |
 | `installer.ts` | 93.61% | 79.16% | 83–86 | `getPythonDownloadUrl()` unsupported platform/arch throw. Private function, only testable via `ensurePythonEnvironment()` on unsupported platform. |
 | `extension.ts` | 94.23% | 80.76% | 28, 32 | Minor wiring: output channel creation (28), walkthrough timer scheduling (32). Low value to test. |
-| `f5python.ts` | 95.16% | 88.88% | 142–143 | `requestSynthesis` HTTP `req.on("timeout")` handler. Needs a non-responding test server + fake timers for the 120s timeout. |
+| `chunker.ts` | 91.48% | 85% | 87–88, 121–122, 153 | `waitForChange` immediate return (87–88), prefetch buffer full + abort race (121–122), consumer waiting (153). Require carefully timed async tests. |
+| `textPreprocessor.ts` | 100% | 88.88% | 153, 260 | Abbreviation expansion edge cases |
+| `setup.ts` | 90.69% | 94.73% | 100–104 | `promptCustomEndpoint()` URL validation branch |
+| `player.ts` | 97.5% | 95.45% | 80–81 | `playFile()` stopped guard — extremely narrow race window, low value to test |
+| `speechProvider.ts` | 98.73% | 90.9% | 174, 184 | Error handling in `runPlaybackLoop` edge cases |
 
 **Recommended next targets** (best ROI):
-1. **`setup.ts`** (~74% → 90%+): Test `runSetupWizard` end-to-end by mocking `showQuickPick` to return a backend choice, then verify `config.update` is called and `createBackend` returns the expected type. Test `promptCustomEndpoint` by mocking `showInputBox`.
-2. **`kokoro.ts`** (~75% → 90%+): Mock `ensureKokoroInstalled` and the dynamic `import("kokoro-js")` to test `initialize()`. The challenge is mocking ESM dynamic imports in vitest — use `vi.mock("kokoro-js", ...)` with a factory.
-3. **`custom.ts`** (~84% → 95%+): Add HTTPS health check test (mock `https.get`), non-200 status test, and synthesis timeout test (non-responding server).
+1. **`commands.ts`** (77.8% branches): Test `registerCommands()` subscription detail and `readSelectionAloud` no-backend guard.
+2. **`installer.ts`** (79.2% branches): Mock unsupported platform to hit the throw branch.
+3. **`chunker.ts`** (85% branches): Carefully timed async tests for `waitForChange` immediate return and prefetch buffer backpressure race conditions.
 
 #### Phase 2 — Multi-Voice & Agent Identity
 
@@ -467,7 +466,7 @@ Coverage report from `npx vitest run --coverage` (2026-02-20). All Phase 1 targe
 
 ### What Was Done
 
-Multi-session testing initiative taking the project from 15.2% to **91.65% statement coverage** (210 tests, 16 files, all green). Key deliverables:
+Multi-session testing initiative taking the project from 15.2% to **95.64% statement coverage** (245 tests, 16 files, all green). Key deliverables:
 
 | Deliverable | Commit | Impact |
 |-------------|--------|--------|
@@ -478,46 +477,36 @@ Multi-session testing initiative taking the project from 15.2% to **91.65% state
 | f5python.ts test coverage 57%→95.16% | `1bd0109` | 11 tests: startServer lifecycle, CLI args, abort |
 | Backend config interfaces (KokoroConfig, F5Config, CustomConfig) | `3add491` | Typed config objects in types.ts |
 | ExtensionServices dependency injection | Part of A1 | Testable state management, no hidden globals |
-| Coverage thresholds in vitest.config.ts | `755112f` | CI enforces 78/68/76/78 minimums |
+| Coverage thresholds in vitest.config.ts | `8da271c` | CI enforces 90/85/90/92 minimums |
+| Shared test helpers (fakeBackend, makeContext, collectEvents) | `546fa7f` | DRY test infrastructure, -39 net lines |
+| Player.ts branch coverage 63.6%→95.5% | `ad0ad30` | Windows, error handling, process signal tests |
+| Session integration test isolation + speedup | `ad0ad30` | MockAudioPlayer, 3.6s→48ms |
+| Chunker branch coverage 82.5%→85% | `8da271c` | Backpressure, abort, non-Error throw tests |
+| Emoji/special char stripping + abbreviation expansion | `4485ccf` | Cleaner TTS output for markdown symbols |
 
 ### What's Working
 
-- **All 210 tests pass** — `npm test` green, `npm run build` clean, `npm run typecheck` clean
+- **All 245 tests pass** — `npm test` green, `npm run build` clean, `npm run typecheck` clean
 - **CI pipeline**: GitHub Actions runs tests on Node 20+22, typecheck on Node 22
 - **Release pipeline**: `v*` tags trigger test → build → vsce package → GitHub Release
 - **All Phase 1 (A1–A5) and Phase 2 (B1–B2) improvements complete**
-- **Coverage well above thresholds**: 91.65% stmts (threshold 78%), 80.95% branches (68%), 89.2% funcs (76%), 93.17% lines (78%)
+- **Coverage well above thresholds**: 95.64% stmts (90%), 87.12% branches (85%), 93.79% funcs (90%), 97.05% lines (92%)
 
 ### Recommended Next Steps (priority order)
 
-#### 1. Close Remaining Coverage Gaps (~2–3h)
+#### 1. Close Remaining Branch Coverage Gaps
 
-Three files are below 85% and have clear test strategies (see "Remaining Coverage Gaps" table above):
+Three areas have branch coverage below 90% and would benefit from targeted tests:
 
-- **`setup.ts` (74.41%)**: Mock `showQuickPick` to return backend choice, mock `showInputBox` for custom endpoint URL. Test `runSetupWizard()` end-to-end: pick backend → verify `config.update("backend", ...)` → verify `createBackend()` returns correct type.
-- **`kokoro.ts` (75%)**: Mock `ensureKokoroInstalled` (already done in other tests) + mock dynamic `import("kokoro-js")` via `vi.mock("kokoro-js", ...)`. Test `initialize()` calls `from_pretrained` with correct dtype/device.
-- **`custom.ts` (84.21%)**: Add HTTPS branch test (mock `https.get`), non-200 health check test, synthesis timeout test. Can reuse the real HTTP server pattern from `f5PythonIntegration.test.ts`.
+- **`commands.ts` (77.8% branches)**: Uncovered lines 28-34 (error handling in `initializeAndRegister`), 217-218 (edge cases in toggle logic). Add tests for initialization failures and toggle state transitions.
+- **`installer.ts` (79.2% branches)**: Uncovered lines 83-86 (platform-specific npm detection paths). Add tests for Windows/Linux npm resolution branches.
+- **`chunker.ts` remaining branches (85%)**: Lines 87-88 (`waitForChange` immediate return when pending), 121-122 (prefetch buffer full + abort race), 153 (consumer waiting for chunk). These require carefully timed async tests.
 
-#### 2. Fix the Flaky f5PythonIntegration Test
+#### 2. Add Integration Tests for Preprocessor Features
 
-"synthesize writes and cleans up temp file" occasionally fails with ENOENT due to a race between the HTTP response and `fs.readFileSync`. Fix: add a small `waitForFile()` helper that polls with `fs.existsSync` before reading, or use `fs.promises.access` with a retry loop.
+The new abbreviation expansion and emoji stripping features (`4485ccf`) would benefit from integration tests that verify the full pipeline: markdown input → preprocessor → chunker → backend receives clean text.
 
-#### 3. Raise Coverage Thresholds
-
-Once gaps are closed, bump thresholds in `vitest.config.ts` to lock in the gains:
-```typescript
-statements: 88,   // from 78
-branches: 78,     // from 68
-functions: 86,    // from 76
-lines: 90,        // from 78
-```
-
-#### 4. Feature Work: Phase 3 (Audio Pipeline)
-
-- **C1 — Audio playback modernization**: ⏳ Researched. Best candidate is `speaker` npm (direct PCM streaming via mpg123). Deferred — native C++ addon adds platform complexity. Current `afplay`/`aplay` approach is adequate for single-voice TTS. Revisit when multi-agent voice support is needed.
-- **C2 — Sub-sentence streaming**: ✅ Completed. Event-driven chunker replaces 80ms polling. Full TextSplitterStream types added to `kokoro-js.d.ts` for future integration.
-
-#### 5. Feature Work: Multi-Agent Voice
+#### 3. Feature Work: Multi-Agent Voice
 
 The roadmap vision (Section 15) describes voice-addressed agents with distinct voices. Prerequisites:
 - **Audio queue manager**: Multiple TTS sessions playing concurrently or sequentially

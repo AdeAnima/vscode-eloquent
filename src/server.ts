@@ -22,15 +22,15 @@ export class TtsServerManager {
   ) {
     this.pythonPath = pythonPath;
     this.port = port;
-    this.outputChannel = vscode.window.createOutputChannel("F5 Speech");
+    this.outputChannel = vscode.window.createOutputChannel("Eloquent");
     context.subscriptions.push(this.outputChannel);
 
     this.statusBar = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
     );
-    this.statusBar.command = "f5Speech.startServer";
-    this.updateStatusBar("$(mic) F5", "Click to start F5 TTS server");
+    this.statusBar.command = "eloquent.startServer";
+    this.updateStatusBar("$(mic) EQ", "Click to start Eloquent TTS server");
     this.statusBar.show();
     context.subscriptions.push(this.statusBar);
   }
@@ -52,14 +52,14 @@ export class TtsServerManager {
     }
 
     this.starting = true;
-    this.updateStatusBar("$(loading~spin) F5", "Starting TTS server...");
+    this.updateStatusBar("$(loading~spin) EQ", "Starting F5-TTS server...");
     this.outputChannel.appendLine(
       `Starting F5-TTS server on port ${this.port}...`
     );
 
     const serverScript = path.join(__dirname, "..", "server", "tts_server.py");
 
-    const config = vscode.workspace.getConfiguration("f5Speech");
+    const config = vscode.workspace.getConfiguration("eloquent");
     const refAudio = config.get<string>("refAudioPath", "");
     const refText = config.get<string>("refText", "");
     const quantization = config.get<string>("quantization", "none");
@@ -86,8 +86,8 @@ export class TtsServerManager {
       if (msg.includes("READY")) {
         this.ready = true;
         this.starting = false;
-        this.updateStatusBar("$(mic) F5 ✓", "F5 TTS server running");
-        vscode.window.showInformationMessage("F5 Speech: TTS server started.");
+        this.updateStatusBar("$(mic) EQ ✓", "Eloquent TTS server running");
+        vscode.window.showInformationMessage("Eloquent: TTS server started.");
       }
     });
 
@@ -100,16 +100,16 @@ export class TtsServerManager {
       this.ready = false;
       this.starting = false;
       this.process = null;
-      this.updateStatusBar("$(mic) F5 ✗", "TTS server stopped. Click to restart.");
+      this.updateStatusBar("$(mic) EQ ✗", "TTS server stopped. Click to restart.");
     });
 
     // Wait for server to become ready (max 60s — model loading can take a while)
     const started = await this.waitForReady(60_000);
     if (!started) {
       this.starting = false;
-      this.updateStatusBar("$(mic) F5 ✗", "TTS server failed to start.");
+      this.updateStatusBar("$(mic) EQ ✗", "TTS server failed to start.");
       vscode.window.showErrorMessage(
-        "F5 Speech: Server failed to start. Check the output channel for details."
+        "Eloquent: Server failed to start. Check the output channel for details."
       );
     }
   }
@@ -122,7 +122,7 @@ export class TtsServerManager {
     this.stopPlayback();
     this.ready = false;
     this.starting = false;
-    this.updateStatusBar("$(mic) F5", "Click to start F5 TTS server");
+    this.updateStatusBar("$(mic) EQ", "Click to start Eloquent TTS server");
   }
 
   stopPlayback() {
@@ -142,7 +142,7 @@ export class TtsServerManager {
 
     const tmpFile = path.join(
       os.tmpdir(),
-      `f5-speech-${Date.now()}.wav`
+      `eloquent-${Date.now()}.wav`
     );
 
     try {
@@ -217,7 +217,7 @@ export class TtsServerManager {
         this.playbackProcess = null;
         if (err) {
           // SIGTERM from stopPlayback is expected
-          if ((err as NodeJS.ErrnoException).signal === "SIGTERM") {
+          if ((err as any).signal === "SIGTERM") {
             resolve();
           } else {
             reject(err);

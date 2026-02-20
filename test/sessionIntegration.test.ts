@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EloquentProvider } from "../src/speechProvider";
 import { CancellationTokenSource, TextToSpeechStatus, setMockConfig } from "./__mocks__/vscode";
-import type { AudioChunk, TtsBackend } from "../src/types";
+import { fakeBackend } from "./helpers/fakeBackend";
+import { collectEvents } from "./helpers/collectEvents";
 
 /**
  * Integration tests for the full StreamingTextToSpeechSession lifecycle.
@@ -12,61 +13,18 @@ import type { AudioChunk, TtsBackend } from "../src/types";
  * The mock configuration returns initialBatchDelay=0 to avoid real timers in tests.
  */
 
-function fakeBackend(opts?: {
-  delay?: number;
-  failOnText?: string;
-}): TtsBackend & { calls: string[] } {
-  const calls: string[] = [];
-  return {
-    name: "test",
-    calls,
-    async initialize() {},
-    async *synthesize(text: string, signal: AbortSignal): AsyncIterable<AudioChunk> {
-      calls.push(text);
-      if (opts?.failOnText && text.includes(opts.failOnText)) {
-        throw new Error(`synthesis failed: ${opts.failOnText}`);
-      }
-      if (opts?.delay) await new Promise((r) => setTimeout(r, opts.delay));
-      if (signal.aborted) return;
-      yield { samples: new Float32Array([0.1, 0.2, 0.3]), sampleRate: 24000 };
-    },
-    dispose() {},
-  };
-}
-
-/** Collect status events until Stopped or Error, with a timeout. */
-function collectEvents(
-  session: { onDidChange: (listener: (e: any) => void) => { dispose: () => void } },
-  timeoutMs = 2000,
-): Promise<{ status: number; text?: string }[]> {
-  return new Promise((resolve, reject) => {
-    const events: { status: number; text?: string }[] = [];
-    const timeout = setTimeout(() => {
-      sub.dispose();
-      reject(new Error(`Timed out after ${timeoutMs}ms. Events so far: ${JSON.stringify(events)}`));
-    }, timeoutMs);
-
-    const sub = session.onDidChange((e: any) => {
-      events.push({ status: e.status, text: e.text });
-      if (e.status === TextToSpeechStatus.Stopped || e.status === TextToSpeechStatus.Error) {
-        clearTimeout(timeout);
-        sub.dispose();
-        resolve(events);
-      }
-    });
-  });
-}
-
 describe("StreamingTextToSpeechSession integration", () => {
   let provider: EloquentProvider;
 
   beforeEach(() => {
     setMockConfig("eloquent", "initialBatchDelay", 0);
+    vi.spyOn(console, "error").mockImplementation(() => {});
     provider = new EloquentProvider();
   });
 
   afterEach(() => {
     setMockConfig("eloquent", "initialBatchDelay");
+    vi.restoreAllMocks();
   });
 
   it("full lifecycle: synthesize → Started → Stopped", async () => {

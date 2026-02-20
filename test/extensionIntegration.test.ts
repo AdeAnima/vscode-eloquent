@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AudioChunk, TtsBackend } from "../src/types";
 
 // ─── Mocks for heavy dependencies ─────────────────────────────────────────────
 
@@ -148,25 +147,7 @@ vi.mock("vscode", () => {
 
 import * as vscode from "vscode";
 import { createBackend } from "../src/setup";
-
-// ─── Fake backend for testing ─────────────────────────────────────────────────
-
-function fakeBackend(): TtsBackend {
-  return {
-    name: "FakeTest",
-    initialize: vi.fn().mockResolvedValue(undefined),
-    async *synthesize(
-      _text: string,
-      _signal: AbortSignal
-    ): AsyncIterable<AudioChunk> {
-      yield {
-        samples: new Float32Array([0.1, 0.2]),
-        sampleRate: 24000,
-      };
-    },
-    dispose: vi.fn(),
-  };
-}
+import { fakeBackend } from "./helpers/fakeBackend";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

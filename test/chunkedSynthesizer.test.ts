@@ -1,28 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ChunkedSynthesizer } from "../src/chunker";
-import type { AudioChunk, TtsBackend } from "../src/types";
-
-/** Creates a fake backend that returns one AudioChunk per synthesize call. */
-function fakeBackend(delay = 0): TtsBackend & { calls: string[] } {
-  const calls: string[] = [];
-  return {
-    name: "test",
-    calls,
-    async initialize() {},
-    async *synthesize(
-      text: string,
-      _signal: AbortSignal
-    ): AsyncIterable<AudioChunk> {
-      calls.push(text);
-      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-      yield {
-        samples: new Float32Array([0.1, 0.2]),
-        sampleRate: 24000,
-      };
-    },
-    dispose() {},
-  };
-}
+import type { AudioChunk } from "../src/types";
+import { fakeBackend } from "./helpers/fakeBackend";
 
 async function collectChunks(
   synth: ChunkedSynthesizer,
@@ -72,7 +51,7 @@ describe("ChunkedSynthesizer", () => {
   });
 
   it("respects abort signal", async () => {
-    const backend = fakeBackend(50);
+    const backend = fakeBackend({ delay: 50 });
     const synth = new ChunkedSynthesizer(backend);
 
     synth.push("Sentence one. Sentence two. Sentence three. Sentence four.");

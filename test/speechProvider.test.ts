@@ -1,25 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EloquentProvider } from "../src/speechProvider";
 import { CancellationTokenSource, TextToSpeechStatus } from "./__mocks__/vscode";
-import type { AudioChunk, TtsBackend } from "../src/types";
-
-/** Minimal fake backend for provider tests. */
-function fakeBackend(delay = 0): TtsBackend & { calls: string[]; disposed: boolean } {
-  const calls: string[] = [];
-  let disposed = false;
-  return {
-    name: "test",
-    calls,
-    get disposed() { return disposed; },
-    async initialize() {},
-    async *synthesize(text: string, _signal: AbortSignal): AsyncIterable<AudioChunk> {
-      calls.push(text);
-      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-      yield { samples: new Float32Array([0.1]), sampleRate: 24000 };
-    },
-    dispose() { disposed = true; },
-  };
-}
+import { fakeBackend } from "./helpers/fakeBackend";
 
 describe("EloquentProvider", () => {
   let provider: EloquentProvider;
@@ -185,7 +167,7 @@ describe("EloquentProvider", () => {
     });
 
     it("cancellation token stops session and fires Stopped", async () => {
-      provider.setBackend(fakeBackend(100));
+      provider.setBackend(fakeBackend({ delay: 100 }));
       const cts = new CancellationTokenSource();
       const session = provider.provideTextToSpeechSession(cts.token as any)!;
 

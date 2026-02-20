@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { AudioChunk, TtsBackend } from "../src/types";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -39,24 +38,10 @@ import { EloquentProvider } from "../src/speechProvider";
 import { StatusBarManager } from "../src/statusBar";
 import * as vscode from "vscode";
 import { setMockConfig } from "./__mocks__/vscode";
+import { fakeBackend } from "./helpers/fakeBackend";
+import { makeContext } from "./helpers/makeContext";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fakeBackend(opts?: { initFail?: boolean }): TtsBackend {
-  return {
-    name: "FakeBackend",
-    initialize: opts?.initFail
-      ? vi.fn().mockRejectedValue(new Error("init failed"))
-      : vi.fn().mockResolvedValue(undefined),
-    async *synthesize(
-      _text: string,
-      _signal: AbortSignal
-    ): AsyncIterable<AudioChunk> {
-      yield { samples: new Float32Array([0.1]), sampleRate: 24000 };
-    },
-    dispose: vi.fn(),
-  };
-}
 
 function makeServices(
   overrides?: Partial<ExtensionServices>
@@ -75,14 +60,6 @@ function makeServices(
     speechRegistration: undefined,
     ...overrides,
   };
-}
-
-function makeContext(): vscode.ExtensionContext {
-  return {
-    subscriptions: [],
-    extensionPath: "/fake/ext",
-    globalStorageUri: { fsPath: "/fake/storage" },
-  } as unknown as vscode.ExtensionContext;
 }
 
 /** Patch vscode.window/speech/commands for command tests. */

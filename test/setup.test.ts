@@ -32,17 +32,7 @@ import {
   runSetupWizard,
 } from "../src/setup";
 import type { BackendId } from "../src/types";
-
-function makeContext(
-  extensionPath = "/ext",
-  storagePath = "/storage"
-): vscode.ExtensionContext {
-  return {
-    extensionPath,
-    globalStorageUri: { fsPath: storagePath },
-    subscriptions: [],
-  } as unknown as vscode.ExtensionContext;
-}
+import { makeContext } from "./helpers/makeContext";
 
 describe("setup", () => {
   beforeEach(() => {

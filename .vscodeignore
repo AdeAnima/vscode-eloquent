@@ -1,6 +1,7 @@
 src/**
 test/**
 server/**
+coverage/**
 node_modules/**
 .vscode/**
 .github/**
@@ -9,6 +10,8 @@ esbuild.config.mjs
 vitest.config.ts
 BRIEFING.md
 RESEARCH-TTS-MODELS-2026.md
-*.map
+CLAUDE.md
+PROJECT.md
+**/*.map
 .gitignore
 .git/**

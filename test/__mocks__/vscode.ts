@@ -1,7 +1,22 @@
 // Minimal vscode mock for tests
+const configOverrides: Record<string, Record<string, unknown>> = {};
+
+/** Set a config value in the mock. Call with no value to clear. */
+export function setMockConfig(section: string, key: string, value?: unknown): void {
+  if (value === undefined) {
+    delete configOverrides[section]?.[key];
+  } else {
+    (configOverrides[section] ??= {})[key] = value;
+  }
+}
+
 export const workspace = {
-  getConfiguration: (_section?: string) => ({
-    get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+  getConfiguration: (section?: string) => ({
+    get: <T>(key: string, defaultValue?: T): T | undefined => {
+      const overrides = section ? configOverrides[section] : undefined;
+      if (overrides && key in overrides) return overrides[key] as T;
+      return defaultValue;
+    },
   }),
 };
 

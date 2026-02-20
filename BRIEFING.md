@@ -175,11 +175,9 @@ vscode-eloquent/
 │   ├── player.ts             # AudioPlayer: WAV encoding, platform playback, pause/resume
 │   ├── setup.ts              # Backend picker, voice picker, createBackend() factory
 │   ├── installer.ts          # Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
-│   ├── server.ts             # ⚠️ Legacy TtsServerManager (unused, pre-refactor)
 │   ├── types.ts              # TtsBackend, AudioChunk, BackendId, BACKENDS
 │   ├── kokoro-js.d.ts        # Type declarations for kokoro-js npm package
 │   └── backends/
-│       ├── index.ts          # Re-exports all backends
 │       ├── kokoro.ts         # KokoroBackend: in-process ONNX inference
 │       ├── f5python.ts       # F5PythonBackend: subprocess + HTTP to tts_server.py
 │       └── custom.ts         # CustomBackend: external HTTP TTS server
@@ -207,7 +205,6 @@ vscode-eloquent/
 ├── CLAUDE.md                 # Claude/Cline agent instructions
 ├── README.md                 # User-facing documentation
 ├── CHANGELOG.md              # Version history
-├── PROJECT.md                # Older project doc (partially outdated)
 └── RESEARCH-TTS-MODELS-2026.md  # Full TTS model research
 ```
 
@@ -322,7 +319,6 @@ vscode-eloquent/
 ### Release (`release.yml`)
 - **Trigger**: Push `v*` tags
 - **Steps**: Test → build → `vsce package --no-dependencies` → GitHub Release via `softprops/action-gh-release@v2`
-- ⚠️ **Known issue**: VSIX filename still uses `f5-speech-` prefix instead of `eloquent-`
 
 ---
 
@@ -345,13 +341,9 @@ npm run test:watch   # vitest in watch mode
 
 ## 13. Known Issues & Tech Debt
 
-1. **Dead code**: `src/server.ts` (`TtsServerManager`) is the original monolithic server manager from before the multi-backend refactor. Not imported anywhere — should be removed.
-2. **Duplicated WAV parser**: `parseWav()` and `pcmToFloat32()` are copy-pasted in both `src/backends/f5python.ts` and `src/backends/custom.ts`. Should be extracted to a shared utility.
-3. **Release workflow naming**: `release.yml` produces `f5-speech-*.vsix` instead of `eloquent-*.vsix`.
-4. **150ms batching**: `StreamingTextToSpeechSession` waits 150ms after the first `synthesize()` call before flushing. This batches initial tokens but introduces a fixed delay. Could be made configurable or adaptive.
-5. **Kokoro TextSplitterStream unused**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming, but the extension uses its own `chunkText()` + `ChunkedSynthesizer` instead. The custom implementation gives more control over chunk sizing and prefetch, but the tradeoff should be revisited.
-6. **No integration tests**: Only unit tests exist. No tests for the full session lifecycle, backend initialization, or audio playback.
-7. **PROJECT.md outdated**: Uses old `f5Speech.*` setting prefix and single-backend architecture description.
+1. **150ms batching**: `StreamingTextToSpeechSession` waits 150ms after the first `synthesize()` call before flushing. This batches initial tokens but introduces a fixed delay. Could be made configurable or adaptive.
+2. **Kokoro TextSplitterStream unused**: `kokoro-js` provides a built-in `TextSplitterStream` for incremental streaming, but the extension uses its own `chunkText()` + `ChunkedSynthesizer` instead. The custom implementation gives more control over chunk sizing and prefetch, but the tradeoff should be revisited.
+3. **No integration tests**: Only unit tests exist. No tests for the full session lifecycle, backend initialization, or audio playback.
 
 ---
 

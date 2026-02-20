@@ -8,7 +8,6 @@ tsconfig.json
 esbuild.config.mjs
 vitest.config.ts
 BRIEFING.md
-PROJECT.md
 RESEARCH-TTS-MODELS-2026.md
 *.map
 .gitignore

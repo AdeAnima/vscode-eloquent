@@ -168,6 +168,13 @@
           "maximum": 10,
           "description": "Number of audio chunks to synthesize ahead of playback. Higher = smoother but more memory. Lower = less latency on slow machines."
         },
+        "eloquent.initialBatchDelay": {
+          "type": "number",
+          "default": 150,
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Milliseconds to wait before starting synthesis, allowing initial tokens to accumulate. Lower = faster start but more chunking. 0 = no delay."
+        },
         "eloquent.kokoroDtype": {
           "type": "string",
           "enum": [

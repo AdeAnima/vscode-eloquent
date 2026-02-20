@@ -62,7 +62,4 @@ Debug: F5 in VS Code Insiders launches Extension Development Host.
 
 ## Known Issues
 
-- `src/server.ts` is dead code (legacy pre-refactor server manager) — not imported anywhere
-- WAV parser is duplicated in `src/backends/f5python.ts` and `src/backends/custom.ts`
-- `release.yml` produces `f5-speech-*.vsix` instead of `eloquent-*.vsix`
-- `PROJECT.md` is outdated (uses old `f5Speech.*` prefix)
+- No known issues at this time.

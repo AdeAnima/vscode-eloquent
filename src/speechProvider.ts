@@ -160,7 +160,12 @@ class StreamingTextToSpeechSession implements vscode.TextToSpeechSession {
     try {
       // Brief pause to accumulate initial tokens from Copilot streaming.
       // The prefetch buffer in ChunkedSynthesizer handles the rest.
-      await new Promise((r) => setTimeout(r, 150));
+      const batchDelay = vscode.workspace
+        .getConfiguration("eloquent")
+        .get<number>("initialBatchDelay", 150);
+      if (batchDelay > 0) {
+        await new Promise((r) => setTimeout(r, batchDelay));
+      }
       this.synthesizer.flush();
 
       for await (const chunk of this.synthesizer.stream(

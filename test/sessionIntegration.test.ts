@@ -1,0 +1,260 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { EloquentProvider } from "../src/speechProvider";
+import { CancellationTokenSource, TextToSpeechStatus, setMockConfig } from "./__mocks__/vscode";
+import type { AudioChunk, TtsBackend } from "../src/types";
+
+/**
+ * Integration tests for the full StreamingTextToSpeechSession lifecycle.
+ *
+ * These test the complete flow: provideTextToSpeechSession → synthesize() calls
+ * → ChunkedSynthesizer → backend.synthesize → status events (Started/Stopped/Error).
+ *
+ * The mock configuration returns initialBatchDelay=0 to avoid real timers in tests.
+ */
+
+function fakeBackend(opts?: {
+  delay?: number;
+  failOnText?: string;
+}): TtsBackend & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    name: "test",
+    calls,
+    async initialize() {},
+    async *synthesize(text: string, signal: AbortSignal): AsyncIterable<AudioChunk> {
+      calls.push(text);
+      if (opts?.failOnText && text.includes(opts.failOnText)) {
+        throw new Error(`synthesis failed: ${opts.failOnText}`);
+      }
+      if (opts?.delay) await new Promise((r) => setTimeout(r, opts.delay));
+      if (signal.aborted) return;
+      yield { samples: new Float32Array([0.1, 0.2, 0.3]), sampleRate: 24000 };
+    },
+    dispose() {},
+  };
+}
+
+/** Collect status events until Stopped or Error, with a timeout. */
+function collectEvents(
+  session: { onDidChange: (listener: (e: any) => void) => { dispose: () => void } },
+  timeoutMs = 2000,
+): Promise<{ status: number; text?: string }[]> {
+  return new Promise((resolve, reject) => {
+    const events: { status: number; text?: string }[] = [];
+    const timeout = setTimeout(() => {
+      sub.dispose();
+      reject(new Error(`Timed out after ${timeoutMs}ms. Events so far: ${JSON.stringify(events)}`));
+    }, timeoutMs);
+
+    const sub = session.onDidChange((e: any) => {
+      events.push({ status: e.status, text: e.text });
+      if (e.status === TextToSpeechStatus.Stopped || e.status === TextToSpeechStatus.Error) {
+        clearTimeout(timeout);
+        sub.dispose();
+        resolve(events);
+      }
+    });
+  });
+}
+
+describe("StreamingTextToSpeechSession integration", () => {
+  let provider: EloquentProvider;
+
+  beforeEach(() => {
+    setMockConfig("eloquent", "initialBatchDelay", 0);
+    provider = new EloquentProvider();
+  });
+
+  afterEach(() => {
+    setMockConfig("eloquent", "initialBatchDelay");
+  });
+
+  it("full lifecycle: synthesize → Started → Stopped", async () => {
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+    expect(session).toBeDefined();
+
+    const eventsPromise = collectEvents(session);
+
+    session.synthesize("Hello world.");
+
+    const events = await eventsPromise;
+
+    expect(events[0].status).toBe(TextToSpeechStatus.Started);
+    expect(events[events.length - 1].status).toBe(TextToSpeechStatus.Stopped);
+    expect(backend.calls.length).toBeGreaterThanOrEqual(1);
+    expect(backend.calls.join(" ")).toContain("Hello");
+
+    cts.dispose();
+  });
+
+  it("multiple synthesize calls accumulate text", async () => {
+    // Use a small batch delay so all three synchronous synthesize() calls
+    // accumulate before the playback loop flushes.
+    setMockConfig("eloquent", "initialBatchDelay", 10);
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    const eventsPromise = collectEvents(session);
+
+    // Simulate Copilot streaming tokens
+    session.synthesize("First sentence. ");
+    session.synthesize("Second sentence. ");
+    session.synthesize("Third sentence.");
+
+    const events = await eventsPromise;
+
+    expect(events[0].status).toBe(TextToSpeechStatus.Started);
+    expect(events[events.length - 1].status).toBe(TextToSpeechStatus.Stopped);
+
+    const allText = backend.calls.join(" ");
+    expect(allText).toContain("First");
+    expect(allText).toContain("Third");
+
+    cts.dispose();
+  });
+
+  it("cancellation via token fires Stopped and halts synthesis", async () => {
+    const backend = fakeBackend({ delay: 50 });
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    const eventsPromise = collectEvents(session);
+
+    session.synthesize("Sentence one. Sentence two. Sentence three. Sentence four.");
+
+    // Cancel almost immediately — should not synthesize all chunks
+    setTimeout(() => cts.cancel(), 10);
+
+    const events = await eventsPromise;
+
+    expect(events.some((e) => e.status === TextToSpeechStatus.Stopped)).toBe(true);
+    // Should have stopped early
+    expect(backend.calls.length).toBeLessThan(4);
+
+    cts.dispose();
+  });
+
+  it("backend error fires Error status with message", async () => {
+    const backend = fakeBackend({ failOnText: "Hello" });
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    const eventsPromise = collectEvents(session);
+
+    session.synthesize("Hello world.");
+
+    const events = await eventsPromise;
+
+    const errorEvent = events.find((e) => e.status === TextToSpeechStatus.Error);
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.text).toContain("synthesis failed");
+
+    cts.dispose();
+  });
+
+  it("onDidEndSession fires when session completes naturally", async () => {
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    let sessionEnded = false;
+    provider.onDidEndSession(() => { sessionEnded = true; });
+
+    const eventsPromise = collectEvents(session);
+    session.synthesize("Done.");
+    await eventsPromise;
+
+    // Give the finally block time to run
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(sessionEnded).toBe(true);
+
+    cts.dispose();
+  });
+
+  it("synthesize after abort is a no-op", async () => {
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    const eventsPromise = collectEvents(session);
+    session.synthesize("First.");
+
+    // Cancel and try to synthesize more
+    cts.cancel();
+
+    const events = await eventsPromise;
+    expect(events.some((e) => e.status === TextToSpeechStatus.Stopped)).toBe(true);
+
+    // This should be silently ignored
+    session.synthesize("Should be ignored.");
+
+    // Backend should have been called with at most the first text
+    const allText = backend.calls.join(" ");
+    expect(allText).not.toContain("ignored");
+
+    cts.dispose();
+  });
+
+  it("second session replaces the first", async () => {
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    // First session
+    const cts1 = new CancellationTokenSource();
+    const session1 = provider.provideTextToSpeechSession(cts1.token as any)!;
+
+    // Second session immediately replaces
+    const cts2 = new CancellationTokenSource();
+    const session2 = provider.provideTextToSpeechSession(cts2.token as any)!;
+
+    expect(session2).toBeDefined();
+    expect(session2).not.toBe(session1);
+
+    // The second session should work independently
+    const events2Promise = collectEvents(session2);
+    session2.synthesize("From session two.");
+    const events2 = await events2Promise;
+
+    expect(events2[0].status).toBe(TextToSpeechStatus.Started);
+    expect(events2[events2.length - 1].status).toBe(TextToSpeechStatus.Stopped);
+
+    cts1.cancel();
+    cts1.dispose();
+    cts2.dispose();
+  });
+
+  it("empty text produces Started then Stopped with no backend calls", async () => {
+    const backend = fakeBackend();
+    provider.setBackend(backend);
+
+    const cts = new CancellationTokenSource();
+    const session = provider.provideTextToSpeechSession(cts.token as any)!;
+
+    const eventsPromise = collectEvents(session);
+    session.synthesize("");
+
+    const events = await eventsPromise;
+
+    expect(events[0].status).toBe(TextToSpeechStatus.Started);
+    expect(events[events.length - 1].status).toBe(TextToSpeechStatus.Stopped);
+    expect(backend.calls.length).toBe(0);
+
+    cts.dispose();
+  });
+});

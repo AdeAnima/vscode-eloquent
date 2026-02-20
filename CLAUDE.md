@@ -62,7 +62,6 @@ Run `npm test` before every commit. Run `npm run build && npm run typecheck` bef
 - `src/extension.ts` — Entry point, 7 commands, status bar, walkthrough trigger
 - `src/setup.ts` — Backend picker, voice picker (28 Kokoro voices), `createBackend()` factory
 - `src/installer.ts` — Auto-install kokoro-js (npm) or python-build-standalone + f5-tts-mlx (pip)
-- `src/server.ts` — ⚠️ Legacy TtsServerManager (dead code, not imported anywhere)
 - `src/kokoro-js.d.ts` — Type declarations for kokoro-js npm package
 - `src/backends/kokoro.ts` — Kokoro ONNX backend (in-process Node.js)
 - `src/backends/f5python.ts` — F5-TTS via auto-installed Python subprocess
@@ -88,4 +87,3 @@ Tests live in `test/` and use vitest with a vscode mock (`test/__mocks__/vscode.
 
 - `.github/workflows/ci.yml` — Runs on push/PR to main: tests (Node 20+22), build, typecheck
 - `.github/workflows/release.yml` — Triggered on `v*` tags: tests, build, vsce package, GitHub Release
-- ⚠️ Release workflow still produces `f5-speech-*.vsix` (naming not updated to `eloquent`)

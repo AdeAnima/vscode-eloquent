@@ -136,7 +136,7 @@ describe("commands", () => {
       disableTts(services);
 
       expect(services.speechRegistration).toBeUndefined();
-      expect(backend.dispose).toHaveBeenCalled();
+      expect(backend.dispose).toHaveBeenCalledTimes(1);
     });
 
     it("is safe when no backend or registration", () => {
@@ -163,7 +163,7 @@ describe("commands", () => {
 
       togglePause(services);
 
-      expect(spy).toHaveBeenCalled();
+      expect(spy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -216,7 +216,9 @@ describe("commands", () => {
 
       await readSelectionAloud(services);
 
-      expect(mockPlayerPlay).toHaveBeenCalled();
+      expect(mockPlayerPlay).toHaveBeenCalledWith(
+        expect.objectContaining({ sampleRate: 24000 })
+      );
     });
   });
 
@@ -230,7 +232,7 @@ describe("commands", () => {
 
       await initializeAndRegister(context, services, backend);
 
-      expect(backend.initialize).toHaveBeenCalled();
+      expect(backend.initialize).toHaveBeenCalledTimes(1);
       expect(vscode.speech.registerSpeechProvider).toHaveBeenCalledWith(
         "eloquent",
         services.provider
@@ -261,7 +263,7 @@ describe("commands", () => {
 
       await initializeAndRegister(context, services, backend);
 
-      expect(oldDispose).toHaveBeenCalled();
+      expect(oldDispose).toHaveBeenCalledTimes(1);
     });
 
     it("sets status bar to loading then active", async () => {
@@ -285,7 +287,9 @@ describe("commands", () => {
       // testVoice plays audio
       await initializeAndRegister(context, services, fakeBackend());
 
-      expect(mockPlayerPlay).toHaveBeenCalled();
+      expect(mockPlayerPlay).toHaveBeenCalledWith(
+        expect.objectContaining({ sampleRate: 24000 })
+      );
     });
   });
 
@@ -298,7 +302,9 @@ describe("commands", () => {
 
       await testVoice(services, fakeBackend());
 
-      expect(mockPlayerPlay).toHaveBeenCalled();
+      expect(mockPlayerPlay).toHaveBeenCalledWith(
+        expect.objectContaining({ sampleRate: 24000 })
+      );
       expect(spy).toHaveBeenCalledWith(true); // finally block
     });
 
@@ -340,7 +346,7 @@ describe("commands", () => {
       const services = makeServices();
       await setupBackend(makeContext(), services);
 
-      expect(backend.initialize).toHaveBeenCalled();
+      expect(backend.initialize).toHaveBeenCalledTimes(1);
       expect(services.speechRegistration).toBeDefined();
     });
   });
@@ -353,7 +359,7 @@ describe("commands", () => {
 
       await enableTts(makeContext(), makeServices());
 
-      expect(mockRunSetupWizard).toHaveBeenCalled();
+      expect(mockRunSetupWizard).toHaveBeenCalledTimes(1);
     });
 
     it("creates and initializes configured backend", async () => {
@@ -365,7 +371,7 @@ describe("commands", () => {
       await enableTts(makeContext(), services);
 
       expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
-      expect(backend.initialize).toHaveBeenCalled();
+      expect(backend.initialize).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -391,7 +397,7 @@ describe("commands", () => {
       await toggleTts(makeContext(), makeServices());
 
       // Falls through to enableTts → setupBackend because no backend configured
-      expect(mockRunSetupWizard).toHaveBeenCalled();
+      expect(mockRunSetupWizard).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -428,7 +434,7 @@ describe("commands", () => {
       await changeVoice(makeContext(), services);
 
       expect(mockCreateBackend).toHaveBeenCalledWith("kokoro", expect.anything());
-      expect(backend.initialize).toHaveBeenCalled();
+      expect(backend.initialize).toHaveBeenCalledTimes(1);
     });
   });
 });

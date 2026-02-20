@@ -23,7 +23,7 @@ export class CustomBackend implements TtsBackend {
     await new Promise<void>((resolve, reject) => {
       const req = client.get(
         `${url.origin}/health`,
-        { timeout: 5000 },
+        { timeout: this.config.healthCheckTimeout ?? 5000 },
         (res) => {
           res.resume();
           if (res.statusCode === 200) resolve();

@@ -57,6 +57,8 @@ export interface F5Config {
 /** Custom HTTP endpoint backend configuration. */
 export interface CustomConfig {
   endpoint: string;
+  /** Health-check timeout in ms. Defaults to 5000 (5 s). */
+  healthCheckTimeout?: number;
   /** Synthesis HTTP request timeout in ms. Defaults to 120000 (2 min). */
   synthesisTimeout?: number;
 }

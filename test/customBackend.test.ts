@@ -169,16 +169,17 @@ describe("CustomBackend", () => {
     });
 
     try {
-      const backend = new CustomBackend({ endpoint: hangUrl });
-      // The health check has a 5s timeout — but we can't wait that long.
-      // Verify the timeout path by checking the error message.
+      const backend = new CustomBackend({
+        endpoint: hangUrl,
+        healthCheckTimeout: 200,
+      });
       await expect(backend.initialize()).rejects.toThrow(
         "Custom TTS endpoint timed out"
       );
     } finally {
       hangServer.close();
     }
-  }, 10_000);
+  });
 
   it("selects https client for https:// endpoints", async () => {
     // Use an HTTPS URL pointing at a port that will refuse the connection.

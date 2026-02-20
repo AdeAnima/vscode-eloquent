@@ -448,15 +448,15 @@ Coverage report from `npx vitest run --coverage` (2026-02-20). All Phase 1 targe
 
 | ID | Improvement | Rationale |
 |----|------------|----------|
-| C1 | **Audio playback modernization** — Replace temp-file + platform-command approach with a Node.js audio library or VS Code audio API (if available). | Current approach won't scale for overlapping multi-agent voices, cannot control volume, and has no queue management. |
-| C2 | **Investigate kokoro-js `TextSplitterStream`** — Evaluate for sub-sentence streaming to reduce time-to-first-audio. | Current design waits for full sentences. Sub-sentence streaming could improve perceived latency. |
+| C1 | **Audio playback modernization** — Replace temp-file + platform-command approach with a Node.js audio library or VS Code audio API (if available). | ⏳ Researched, deferred | Investigated `speaker` (mpg123, 8K DL/wk), `naudiodon` (PortAudio, 4yr stale), `node-wav-player`/`sound-play` (same platform-command approach). Best candidate: `speaker` — direct PCM streaming, no temp files, cross-platform. However: native C++ addon requiring node-gyp compilation + platform-specific prebuilds. Current approach is adequate for single-voice TTS. Recommend deferring to when multi-agent voice support is needed. |
+| C2 | **Investigate kokoro-js `TextSplitterStream`** — Evaluate for sub-sentence streaming to reduce time-to-first-audio. | ✅ Done | Investigated. Full TextSplitterStream integration blocked by `preprocessForSpeech()` needing accumulated Markdown context (can't push incremental deltas). Instead: replaced 80ms polling loop in `ChunkedSynthesizer` with event-driven `push()`/`flush()` notifications. Updated `kokoro-js.d.ts` with full `stream()`, `RawAudio`, `TextSplitterStream` types for future use. |
 
 ---
 
 ## 16. Open Questions / Decisions Needed
 
-1. **True token-level streaming**: Current design waits for full sentences before synthesizing. Should we investigate `kokoro-js` `TextSplitterStream` for more granular streaming?
-2. **Audio playback modernization**: `afplay`/`aplay` works but lacks features (no volume control, no queue management). Consider Node.js audio libraries or VS Code audio APIs if they emerge.
+1. **True token-level streaming**: Investigated in C2. Full TextSplitterStream integration blocked by Markdown preprocessing needing accumulated context. Event-driven producer notification implemented instead (eliminates 80ms polling). Future option: add a "raw text" mode (no Markdown preprocessing) that pushes tokens directly into TextSplitterStream.
+2. **Audio playback modernization**: Researched in C1. `speaker` npm (mpg123 backend) is the best option for direct PCM streaming when multi-agent voices are needed. Deferred due to native addon complexity.
 3. **F5-TTS backend maturity**: python-build-standalone download + venv setup is complex and untested on all platforms. Needs end-to-end validation.
 4. **Custom backend protocol**: Should we document a formal API spec for the custom backend so third parties can implement compatible servers?
 5. **Speed control on Linux**: `aplay` doesn't support playback speed adjustment. Need a different player or audio resampling.
@@ -514,8 +514,8 @@ lines: 90,        // from 78
 
 #### 4. Feature Work: Phase 3 (Audio Pipeline)
 
-- **C1 — Audio playback modernization**: Current `afplay`/`aplay` approach can't support overlapping multi-agent voices. Investigate `node-speaker`, `web-audio-api`, or direct PCM streaming.
-- **C2 — Sub-sentence streaming**: Evaluate `kokoro-js` `TextSplitterStream` for lower time-to-first-audio. Current design waits for full sentences (60–135 chars).
+- **C1 — Audio playback modernization**: ⏳ Researched. Best candidate is `speaker` npm (direct PCM streaming via mpg123). Deferred — native C++ addon adds platform complexity. Current `afplay`/`aplay` approach is adequate for single-voice TTS. Revisit when multi-agent voice support is needed.
+- **C2 — Sub-sentence streaming**: ✅ Completed. Event-driven chunker replaces 80ms polling. Full TextSplitterStream types added to `kokoro-js.d.ts` for future integration.
 
 #### 5. Feature Work: Multi-Agent Voice
 

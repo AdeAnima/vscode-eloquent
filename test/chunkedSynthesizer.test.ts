@@ -139,4 +139,54 @@ describe("ChunkedSynthesizer", () => {
       "synthesis failed"
     );
   });
+
+  it("wakes producer immediately on push (no polling delay)", async () => {
+    const backend = fakeBackend();
+    const synth = new ChunkedSynthesizer(backend);
+    const abort = new AbortController();
+
+    // Start streaming without flushing — producer will await new text
+    const chunksPromise = collectChunks(synth, abort.signal);
+
+    // Push a complete sentence then flush; producer should wake up promptly
+    synth.push("Hello world.");
+    synth.flush();
+
+    const chunks = await chunksPromise;
+    expect(chunks.length).toBe(1);
+    expect(backend.calls[0]).toContain("Hello");
+  });
+
+  it("handles push() during synthesis without losing text", async () => {
+    const calls: string[] = [];
+    const slowBackend: TtsBackend = {
+      name: "slow",
+      async initialize() {},
+      async *synthesize(text: string): AsyncIterable<AudioChunk> {
+        calls.push(text);
+        // Simulate slow synthesis
+        await new Promise((r) => setTimeout(r, 20));
+        yield { samples: new Float32Array([0.1]), sampleRate: 24000 };
+      },
+      dispose() {},
+    };
+
+    const synth = new ChunkedSynthesizer(slowBackend);
+    const abort = new AbortController();
+
+    const chunksPromise = collectChunks(synth, abort.signal);
+
+    // Push first sentence, then push more text while first may be synthesizing
+    synth.push("First sentence. ");
+    await new Promise((r) => setTimeout(r, 5));
+    synth.push("Second sentence.");
+    synth.flush();
+
+    const chunks = await chunksPromise;
+    expect(chunks.length).toBeGreaterThanOrEqual(1);
+    // Both sentences must have been synthesized (possibly merged into one chunk)
+    const allText = calls.join(" ");
+    expect(allText).toContain("First");
+    expect(allText).toContain("Second");
+  });
 });

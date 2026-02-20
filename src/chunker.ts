@@ -56,17 +56,40 @@ export function chunkText(
 export class ChunkedSynthesizer {
   private buffer = "";
   private flushed = false;
+  private pendingChange = false;
+  private changeResolve: (() => void) | null = null;
 
   constructor(private readonly backend: TtsBackend) {}
 
   /** Append more text (called as Copilot streams in tokens). */
   push(text: string): void {
     this.buffer += text;
+    this.notifyChange();
   }
 
   /** Signal that no more text will arrive. */
   flush(): void {
     this.flushed = true;
+    this.notifyChange();
+  }
+
+  /** Wake the producer if it's waiting, or set a flag for the next wait. */
+  private notifyChange(): void {
+    this.pendingChange = true;
+    const fn = this.changeResolve;
+    this.changeResolve = null;
+    fn?.();
+  }
+
+  /** Wait until push() or flush() is called. Returns immediately if a change is already pending. */
+  private waitForChange(): Promise<void> {
+    if (this.pendingChange) {
+      this.pendingChange = false;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.changeResolve = resolve;
+    });
   }
 
   /**
@@ -141,8 +164,9 @@ export class ChunkedSynthesizer {
             return;
           }
 
-          // Wait for more text
-          await new Promise((r) => setTimeout(r, 80));
+          // Wait for more text (event-driven via push/flush notification)
+          this.pendingChange = false;
+          await this.waitForChange();
         }
       } catch (err) {
         producerError = err instanceof Error ? err : new Error(String(err));
